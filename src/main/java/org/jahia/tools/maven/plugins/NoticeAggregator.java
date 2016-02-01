@@ -29,11 +29,14 @@ import java.util.jar.JarFile;
  */
 public class NoticeAggregator {
 
-    private File rootDirectory;
+    private final File rootDirectory;
 
-    private RepositorySystem repositorySystem;
-    private RepositorySystemSession repositorySystemSession;
-    private List<RemoteRepository> remoteRepositories;
+    private final RepositorySystem repositorySystem;
+    private final RepositorySystemSession repositorySystemSession;
+    private final List<RemoteRepository> remoteRepositories;
+
+    private Set<List<String>> seenNotices = new HashSet<List<String>>(19);
+    private int numberOfDuplications;
 
     public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories) {
         this.rootDirectory = rootDirectory;
@@ -71,6 +74,8 @@ public class NoticeAggregator {
         Enumeration<JarEntry> jarEntries = realJarFile.entries();
         List<String> allNoticeLines = new ArrayList<String>();
         String pomFilePath = null;
+        boolean bypassed = false;
+
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
             if (!curJarEntry.isDirectory()) {
@@ -78,15 +83,32 @@ public class NoticeAggregator {
                 if (fileName.contains("notice")) {
                     InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
-                    allNoticeLines.addAll(noticeLines);
-                    IOUtils.closeQuietly(noticeInputStream);
+
+                    if (!seenNotices.contains(noticeLines)) {
+                        // remember seen notices to avoid duplication
+                        seenNotices.add(new ArrayList<String>(noticeLines));
+
+                        // check if we don't have the standard Apache notice
+                        final int i = noticeLines.indexOf("This product includes software developed at");
+                        if (i >= 0) {
+                            noticeLines.remove(i);
+                            noticeLines.remove(i);
+                        }
+
+                        allNoticeLines.addAll(noticeLines);
+                        IOUtils.closeQuietly(noticeInputStream);
+                    } else {
+                        bypassed = true;
+                        numberOfDuplications++;
+                    }
                 } else if (fileName.contains("pom.xml")) {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
                 }
             }
         }
-        if (allNoticeLines.size() == 0 && processMavenPom && pomFilePath != null) {
+
+        if (!bypassed && allNoticeLines.size() == 0 && processMavenPom && pomFilePath != null) {
             allNoticeLines = processPOM(realJarFile, pomFilePath);
         }
 
