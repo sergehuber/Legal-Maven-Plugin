@@ -35,8 +35,9 @@ public class NoticeAggregator {
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
 
-    private Set<List<String>> seenNotices = new HashSet<List<String>>(19);
+    private final Set<List<String>> seenNotices = new HashSet<List<String>>(19);
     private int numberOfDuplications;
+    private final List<String> missingNotices = new LinkedList<String>();
 
     public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories) {
         this.rootDirectory = rootDirectory;
@@ -55,6 +56,17 @@ public class NoticeAggregator {
                 e.printStackTrace();
             }
         }
+
+        System.out.println("Found " + seenNotices.size() + " unique NOTICEs.");
+        System.out.println("Avoided " + numberOfDuplications + " duplications.");
+        if (!missingNotices.isEmpty()) {
+            System.out.println("Couldn't find any NOTICE in the following " + missingNotices.size() +
+                    " JAR files or their sources. Please check them manually:");
+            for (String missingNotice : missingNotices) {
+                System.out.println("   " + missingNotice);
+            }
+        }
+
         FileWriter writer = null;
         try {
             File aggregatedNoticeFile = new File(rootDirectory, "NOTICE-aggregated");
@@ -63,6 +75,8 @@ public class NoticeAggregator {
                 writer.append(noticeLine);
                 writer.append("\n");
             }
+
+            System.out.println("Aggregated NOTICE created at " + aggregatedNoticeFile.getPath());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -172,7 +186,7 @@ public class NoticeAggregator {
         }
 
         if (allNoticeLines.size() == 0) {
-            System.err.println("Couldn't find any NOTICE files in " + realJarFile.getName() + " or its sources, you will have to find its content manually.");
+            missingNotices.add(realJarFile.getName());
         }
 
         return allNoticeLines;
