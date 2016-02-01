@@ -36,7 +36,7 @@ public class NoticeAggregator {
     private final List<RemoteRepository> remoteRepositories;
 
     private final Set<List<String>> seenNotices = new HashSet<List<String>>(19);
-    private int numberOfDuplications;
+    private final List<String> duplicated = new LinkedList<String>();
     private final List<String> missingNotices = new LinkedList<String>();
 
     public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories) {
@@ -62,7 +62,14 @@ public class NoticeAggregator {
         }
 
         System.out.println("Found " + seenNotices.size() + " unique NOTICEs.");
-        System.out.println("Omitted " + numberOfDuplications + " duplications.");
+
+        if (!duplicated.isEmpty()) {
+            System.out.println("Omitted duplicated notices for the following " + duplicated.size() + " JAR files:");
+            for (String duplicate : duplicated) {
+                System.out.println("   " + duplicate);
+            }
+        }
+
         if (!missingNotices.isEmpty()) {
             System.out.println("Couldn't find any NOTICE in the following " + missingNotices.size() +
                     " JAR files or their sources. Please check them manually:");
@@ -117,7 +124,7 @@ public class NoticeAggregator {
                         IOUtils.closeQuietly(noticeInputStream);
                     } else {
                         bypassed = true;
-                        numberOfDuplications++;
+                        duplicated.add(jarFile.getPath());
                     }
                 } else if (fileName.endsWith("pom.xml")) {
                     // remember pom file path in case we need it
