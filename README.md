@@ -8,7 +8,7 @@ Setup in your project like this :
             <plugin>
                 <groupId>org.jahia.tools.maven.plugins</groupId>
                 <artifactId>legal-maven-plugin</artifactId>
-                <version>@pom.version@</version>
+                <version>1.0-SNAPSHOT</version>
                 <configuration>
                     <outputDirectory>${project.build.directory}/directoryToScan</outputDirectory>
                 </configuration>
