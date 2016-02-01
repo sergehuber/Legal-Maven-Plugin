@@ -29,7 +29,7 @@ Then build your project using :
 If all went well a target/NOTICE-generated file will be created containing the aggregation of the contents of all the
 NOTICE files found in JARs inside the directory specified in the coImpnfiguration.
 
-To run the plugin, just launch `mvn legal:aggregate-notices`
+To run the plugin directly, just launch `mvn legal:aggregate-notices`
 
 # Debugging the integration test
 
