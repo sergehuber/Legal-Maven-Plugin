@@ -51,14 +51,18 @@ public class NoticeAggregator {
         List<String> allNoticeLines = new ArrayList<String>();
         for (File jarFile : jarFiles) {
             try {
-                allNoticeLines.addAll(processJarFile(jarFile, true));
+                final List<String> notice = processJarFile(jarFile, true);
+                if (!notice.isEmpty()) {
+                    allNoticeLines.add("Notice for " + jarFile.getName());
+                    allNoticeLines.addAll(notice);
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
 
         System.out.println("Found " + seenNotices.size() + " unique NOTICEs.");
-        System.out.println("Avoided " + numberOfDuplications + " duplications.");
+        System.out.println("Omitted " + numberOfDuplications + " duplications.");
         if (!missingNotices.isEmpty()) {
             System.out.println("Couldn't find any NOTICE in the following " + missingNotices.size() +
                     " JAR files or their sources. Please check them manually:");
@@ -93,8 +97,8 @@ public class NoticeAggregator {
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
             if (!curJarEntry.isDirectory()) {
-                final String fileName = curJarEntry.getName().toLowerCase();
-                if (fileName.contains("notice")) {
+                final String fileName = curJarEntry.getName();
+                if (isNotice(fileName, jarFile)) {
                     InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
 
@@ -115,7 +119,7 @@ public class NoticeAggregator {
                         bypassed = true;
                         numberOfDuplications++;
                     }
-                } else if (fileName.contains("pom.xml")) {
+                } else if (fileName.endsWith("pom.xml")) {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
                 }
@@ -129,6 +133,29 @@ public class NoticeAggregator {
         realJarFile.close();
 
         return allNoticeLines;
+    }
+
+    private boolean isNotice(String fileName, File jarFile) {
+        boolean isNotice = fileName.endsWith("NOTICE");
+
+        if(!isNotice) {
+            String lowerCase = fileName.toLowerCase();
+            // retrieve last part of name
+            String separator = lowerCase.contains("\\") ? "\\" : "/";
+            final String[] split = lowerCase.split(separator);
+            if (split.length > 0) {
+                String potential = split[split.length - 1];
+                isNotice = potential.startsWith("notice") && !potential.endsWith(".class");
+
+                if(!isNotice && lowerCase.contains("notice")) {
+                    System.out.println("Potential notice file " + fileName + " in JAR " + jarFile.getName()
+                            + " was NOT handled. You might want to check manually.");
+                }
+            }
+
+        }
+
+        return isNotice;
     }
 
     private List<String> processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
