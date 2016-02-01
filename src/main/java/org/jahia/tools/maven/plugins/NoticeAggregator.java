@@ -35,7 +35,7 @@ public class NoticeAggregator {
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
 
-    private final Set<List<String>> seenNotices = new HashSet<List<String>>(19);
+    private final Set<List<String>> seenNotices = new HashSet<List<String>>(201);
     private final List<String> duplicated = new LinkedList<String>();
     private final List<String> missingNotices = new LinkedList<String>();
 
