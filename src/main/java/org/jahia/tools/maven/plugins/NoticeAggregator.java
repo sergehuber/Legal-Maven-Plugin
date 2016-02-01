@@ -47,7 +47,7 @@ public class NoticeAggregator {
     }
 
     public void execute() {
-        Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[] { "jar"}, true);
+        Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[]{"jar"}, true);
         List<String> allNoticeLines = new ArrayList<String>();
         for (File jarFile : jarFiles) {
             try {
@@ -55,6 +55,7 @@ public class NoticeAggregator {
                 if (!notice.isEmpty()) {
                     allNoticeLines.add("Notice for " + jarFile.getName());
                     allNoticeLines.addAll(notice);
+                    allNoticeLines.add("\n");
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -113,11 +114,20 @@ public class NoticeAggregator {
                         // remember seen notices to avoid duplication
                         seenNotices.add(new ArrayList<String>(noticeLines));
 
+                        // first skip all empty lines
+                        while (noticeLines.get(0).isEmpty()) {
+                            noticeLines.remove(0);
+                        }
                         // check if we don't have the standard Apache notice
                         final int i = noticeLines.indexOf("This product includes software developed at");
                         if (i >= 0) {
                             noticeLines.remove(i);
                             noticeLines.remove(i);
+                        }
+
+                        // skip all remaining empty lines
+                        while (noticeLines.get(noticeLines.size() - 1).isEmpty()) {
+                            noticeLines.remove(noticeLines.size() - 1);
                         }
 
                         allNoticeLines.addAll(noticeLines);
@@ -145,7 +155,7 @@ public class NoticeAggregator {
     private boolean isNotice(String fileName, File jarFile) {
         boolean isNotice = fileName.endsWith("NOTICE");
 
-        if(!isNotice) {
+        if (!isNotice) {
             String lowerCase = fileName.toLowerCase();
             // retrieve last part of name
             String separator = lowerCase.contains("\\") ? "\\" : "/";
@@ -154,7 +164,7 @@ public class NoticeAggregator {
                 String potential = split[split.length - 1];
                 isNotice = potential.startsWith("notice") && !potential.endsWith(".class");
 
-                if(!isNotice && lowerCase.contains("notice")) {
+                if (!isNotice && lowerCase.contains("notice")) {
                     System.out.println("Potential notice file " + fileName + " in JAR " + jarFile.getName()
                             + " was NOT handled. You might want to check manually.");
                 }
@@ -229,16 +239,15 @@ public class NoticeAggregator {
     private File getArtifactFile(Artifact artifact) {
         ArtifactRequest request = new ArtifactRequest();
         request.setArtifact(
-                artifact );
-        request.setRepositories( remoteRepositories );
+                artifact);
+        request.setRepositories(remoteRepositories);
 
         ArtifactResult artifactResult;
-        try
-        {
-            artifactResult = repositorySystem.resolveArtifact( repositorySystemSession, request );
+        try {
+            artifactResult = repositorySystem.resolveArtifact(repositorySystemSession, request);
             File artifactFile = artifactResult.getArtifact().getFile();
             return artifactFile;
-        } catch ( ArtifactResolutionException e ) {
+        } catch (ArtifactResolutionException e) {
             System.err.println("Couldn't find artifact " + artifact + " : " + e.getMessage());
         }
         return null;
