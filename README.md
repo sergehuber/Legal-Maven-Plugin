@@ -21,10 +21,18 @@ Setup in your project like this :
                     </execution>
                 </executions>
             </plugin>
+            
+Then build your project using : 
+
+    mvn clean install
+    
+If all went well a target/NOTICE-generated file will be created containing the aggregation of the contents of all the
+NOTICE files found in JARs inside the directory specified in the coImpnfiguration.
 
 # Debugging the integration test
 
 Launch with :
+
     mvn -P clean install
 
 And connect a debugger on port 8000 (integration tests will block until debugger is connected)
