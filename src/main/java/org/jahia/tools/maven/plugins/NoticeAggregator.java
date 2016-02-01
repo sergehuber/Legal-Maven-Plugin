@@ -16,11 +16,11 @@ import org.jdom2.JDOMException;
 import org.jdom2.Namespace;
 import org.jdom2.input.SAXBuilder;
 
-import java.io.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Enumeration;
-import java.util.List;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -70,69 +70,26 @@ public class NoticeAggregator {
         JarFile realJarFile = new JarFile(jarFile);
         Enumeration<JarEntry> jarEntries = realJarFile.entries();
         List<String> allNoticeLines = new ArrayList<String>();
-        List<Artifact> embeddedArtifacts = new ArrayList<Artifact>();
+        String pomFilePath = null;
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
             if (!curJarEntry.isDirectory()) {
-                if (curJarEntry.getName().toLowerCase().contains("notice")) {
+                final String fileName = curJarEntry.getName().toLowerCase();
+                if (fileName.contains("notice")) {
                     InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
                     allNoticeLines.addAll(noticeLines);
                     IOUtils.closeQuietly(noticeInputStream);
-                } else if (curJarEntry.getName().toLowerCase().contains("pom.xml") && processMavenPom) {
-                    InputStream pomInputStream = realJarFile.getInputStream(curJarEntry);
-                    try {
-                        SAXBuilder jdomBuilder = new SAXBuilder();
-                        Document jdomDocument = jdomBuilder.build(pomInputStream);
-                        Namespace mavenNamespace = Namespace.getNamespace("http://maven.apache.org/POM/4.0.0");
-                        Element rootElement = jdomDocument.getRootElement();
-                        String groupId = null;
-                        Element groupIdElement = rootElement.getChild("groupId", mavenNamespace);
-                        if (groupIdElement != null) {
-                            groupId = groupIdElement.getTextTrim();
-                        } else {
-                            Element parentElement = rootElement.getChild("parent", mavenNamespace);
-                            if (parentElement != null) {
-                                groupIdElement = parentElement.getChild("groupId", mavenNamespace);
-                                if (groupIdElement != null) {
-                                    groupId = groupIdElement.getTextTrim();
-                                }
-                            }
-                        }
-                        String artifactId = null;
-                        Element artifactIdElement = rootElement.getChild("artifactId", mavenNamespace);
-                        if (artifactIdElement != null) {
-                            artifactId = artifactIdElement.getTextTrim();
-                        }
-                        String version = null;
-                        Element versionElement = rootElement.getChild("version", mavenNamespace);
-                        if (versionElement != null) {
-                            version = versionElement.getTextTrim();
-                        } else {
-                            Element parentElement = rootElement.getChild("parent", mavenNamespace);
-                            if (parentElement != null) {
-                                versionElement = parentElement.getChild("version", mavenNamespace);
-                                if (versionElement != null) {
-                                    version = versionElement.getTextTrim();
-                                }
-                            }
-                        }
-                        Artifact artifact = new DefaultArtifact(groupId, artifactId, "sources", "jar", version);
-                        embeddedArtifacts.add(artifact);
-                    } catch (JDOMException e) {
-                        e.printStackTrace();
-                    }
+                } else if (fileName.contains("pom.xml")) {
+                    // remember pom file path in case we need it
+                    pomFilePath = curJarEntry.getName();
                 }
             }
         }
-        if (allNoticeLines.size() == 0 && embeddedArtifacts.size() > 0) {
-            for (Artifact embeddedArtifact : embeddedArtifacts) {
-                File sourceJar = getArtifactFile(embeddedArtifact);
-                if (sourceJar != null && sourceJar.exists()) {
-                    allNoticeLines.addAll(processJarFile(sourceJar, false));
-                }
-            }
+        if (allNoticeLines.size() == 0 && processMavenPom && pomFilePath != null) {
+            allNoticeLines = processPOM(realJarFile, pomFilePath);
         }
+
         realJarFile.close();
         if (allNoticeLines.size() > 0) {
             System.out.println("Found " + allNoticeLines.size() + " NOTICE lines in " + jarFile);
@@ -141,6 +98,63 @@ public class NoticeAggregator {
                 System.err.println("Couldn't find any NOTICE files in " + jarFile + ", you will have to find its content manually.");
             }
         }
+        return allNoticeLines;
+    }
+
+    private List<String> processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
+        JarEntry pom = new JarEntry(pomFilePath);
+        InputStream pomInputStream = realJarFile.getInputStream(pom);
+        final List<Artifact> embeddedArtifacts = new ArrayList<Artifact>();
+        try {
+            SAXBuilder jdomBuilder = new SAXBuilder();
+            Document jdomDocument = jdomBuilder.build(pomInputStream);
+            Namespace mavenNamespace = Namespace.getNamespace("http://maven.apache.org/POM/4.0.0");
+            Element rootElement = jdomDocument.getRootElement();
+            String groupId = null;
+            Element groupIdElement = rootElement.getChild("groupId", mavenNamespace);
+            if (groupIdElement != null) {
+                groupId = groupIdElement.getTextTrim();
+            } else {
+                Element parentElement = rootElement.getChild("parent", mavenNamespace);
+                if (parentElement != null) {
+                    groupIdElement = parentElement.getChild("groupId", mavenNamespace);
+                    if (groupIdElement != null) {
+                        groupId = groupIdElement.getTextTrim();
+                    }
+                }
+            }
+            String artifactId = null;
+            Element artifactIdElement = rootElement.getChild("artifactId", mavenNamespace);
+            if (artifactIdElement != null) {
+                artifactId = artifactIdElement.getTextTrim();
+            }
+            String version = null;
+            Element versionElement = rootElement.getChild("version", mavenNamespace);
+            if (versionElement != null) {
+                version = versionElement.getTextTrim();
+            } else {
+                Element parentElement = rootElement.getChild("parent", mavenNamespace);
+                if (parentElement != null) {
+                    versionElement = parentElement.getChild("version", mavenNamespace);
+                    if (versionElement != null) {
+                        version = versionElement.getTextTrim();
+                    }
+                }
+            }
+            Artifact artifact = new DefaultArtifact(groupId, artifactId, "sources", "jar", version);
+            embeddedArtifacts.add(artifact);
+        } catch (JDOMException e) {
+            e.printStackTrace();
+        }
+
+        final List<String> allNoticeLines = new LinkedList<String>();
+        for (Artifact embeddedArtifact : embeddedArtifacts) {
+            File sourceJar = getArtifactFile(embeddedArtifact);
+            if (sourceJar != null && sourceJar.exists()) {
+                allNoticeLines.addAll(processJarFile(sourceJar, false));
+            }
+        }
+
         return allNoticeLines;
     }
 
