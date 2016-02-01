@@ -113,13 +113,7 @@ public class NoticeAggregator {
         }
 
         realJarFile.close();
-        if (allNoticeLines.size() > 0) {
-            System.out.println("Found " + allNoticeLines.size() + " NOTICE lines in " + jarFile);
-        } else {
-            if (processMavenPom) {
-                System.err.println("Couldn't find any NOTICE files in " + jarFile + ", you will have to find its content manually.");
-            }
-        }
+
         return allNoticeLines;
     }
 
@@ -175,6 +169,10 @@ public class NoticeAggregator {
             if (sourceJar != null && sourceJar.exists()) {
                 allNoticeLines.addAll(processJarFile(sourceJar, false));
             }
+        }
+
+        if (allNoticeLines.size() == 0) {
+            System.err.println("Couldn't find any NOTICE files in " + realJarFile.getName() + " or its sources, you will have to find its content manually.");
         }
 
         return allNoticeLines;
