@@ -103,8 +103,8 @@ public class NoticeAggregator {
         JarFile realJarFile = new JarFile(jarFile);
         Enumeration<JarEntry> jarEntries = realJarFile.entries();
         String pomFilePath = null;
-        boolean bypassed = false;
         Notice notice = null;
+        LicenseText license = null;
 
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
@@ -119,7 +119,6 @@ public class NoticeAggregator {
                         // remember seen notices to avoid duplication
                         seenNotices.add(notice);
                     } else {
-                        bypassed = true;
                         duplicated.add(jarFile.getPath());
                         notice = null;
                     }
@@ -128,12 +127,18 @@ public class NoticeAggregator {
                 } else if (fileName.endsWith("pom.xml")) {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
+                } else if (isLicense(fileName, jarFile)) {
+                    InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
+                    List<String> licenseLines = IOUtils.readLines(licenseInputStream);
+                    license = new LicenseText(licenseLines);
+                    IOUtils.closeQuietly(licenseInputStream);
+
                 }
             }
         }
 
         if (processMavenPom && pomFilePath != null) {
-            final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice);
+            final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license);
             notice = legalArtifact.getNotice();
         }
 
@@ -165,7 +170,29 @@ public class NoticeAggregator {
         return isNotice;
     }
 
-    private LegalArtifact processPOM(JarFile realJarFile, String pomFilePath, Notice notice) throws IOException {
+    private boolean isLicense(String fileName, File jarFile) {
+        boolean isLicense = fileName.endsWith("LICENSE");
+
+        if(!isLicense) {
+            String lowerCase = fileName.toLowerCase();
+            // retrieve last part of name
+            String separator = lowerCase.contains("\\") ? "\\" : "/";
+            final String[] split = lowerCase.split(separator);
+            if (split.length > 0) {
+                String potential = split[split.length - 1];
+                isLicense = potential.startsWith("license") && !potential.endsWith(".class");
+
+                if (!isLicense && lowerCase.contains("license")) {
+                    System.out.println("Potential license file " + fileName + " in JAR " + jarFile.getName()
+                            + " was NOT handled. You might want to check manually.");
+                }
+            }
+        }
+
+        return isLicense;
+    }
+
+    private LegalArtifact processPOM(JarFile realJarFile, String pomFilePath, Notice notice, LicenseText license) throws IOException {
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
 
@@ -176,8 +203,8 @@ public class NoticeAggregator {
             final List<License> licenses = model.getLicenses();
             if (licenses != null && !licenses.isEmpty()) {
                 System.out.println(model.getId() + " defined the following licenses:");
-                for (License license : licenses) {
-                    System.out.println("   " + license.getName());
+                for (License pomLicense : licenses) {
+                    System.out.println("   " + pomLicense.getName());
                 }
             }
 
@@ -209,6 +236,7 @@ public class NoticeAggregator {
         }
 
         legalArtifact.setNotice(notice);
+        legalArtifact.setLicense(license);
 
         if (notice == null) {
             missingNotices.add(realJarFile.getName());

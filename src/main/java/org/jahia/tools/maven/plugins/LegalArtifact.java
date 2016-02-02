@@ -12,6 +12,7 @@ public class LegalArtifact implements Comparable<LegalArtifact> {
     private final Artifact artifact;
     private final Artifact parentArtifact;
     private Notice notice;
+    private LicenseText license;
 
     public LegalArtifact(Artifact artifact, Artifact parentArtifact) {
         this.artifactGAV = artifact.toString();
@@ -58,5 +59,13 @@ public class LegalArtifact implements Comparable<LegalArtifact> {
 
     public Notice getNotice() {
         return notice;
+    }
+
+    public void setLicense(LicenseText license) {
+        this.license = license;
+    }
+
+    public LicenseText getLicense() {
+        return license;
     }
 }
