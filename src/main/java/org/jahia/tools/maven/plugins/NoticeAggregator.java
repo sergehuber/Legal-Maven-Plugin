@@ -35,8 +35,13 @@ public class NoticeAggregator {
     private final List<RemoteRepository> remoteRepositories;
 
     private final Map<String, LegalArtifact> artifacts = new HashMap<>(201);
+
+    private final Set<LicenseText> seenLicenses = new HashSet<>(201);
+    private final List<String> duplicatedLicenses = new LinkedList<>();
+    private final List<String> missingLicenses = new LinkedList<>();
+
     private final Set<Notice> seenNotices = new HashSet<>(201);
-    private final List<String> duplicated = new LinkedList<>();
+    private final List<String> duplicatedNotices = new LinkedList<>();
     private final List<String> missingNotices = new LinkedList<>();
 
     public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories) {
@@ -65,20 +70,9 @@ public class NoticeAggregator {
             }
         }
 
-        System.out.println("Found " + seenNotices.size() + " unique NOTICEs.");
+        outputDiagnostics(false);
+        outputDiagnostics(true);
 
-        if (!duplicated.isEmpty()) {
-            System.out.println("Omitted duplicated notices for the following " + duplicated.size() + " JAR files:");
-            for (String duplicate : duplicated) {
-                System.out.println("   " + duplicate);
-            }
-        }
-
-        if (!missingNotices.isEmpty()) {
-            System.out.println("Couldn't find any NOTICE in the following " + missingNotices.size() +
-                    " JAR files or their sources. Please check them manually:");
-            for (String missingNotice : missingNotices) {
-                System.out.println("   " + missingNotice);
             }
         }
 
@@ -96,6 +90,31 @@ public class NoticeAggregator {
             e.printStackTrace();
         }
         IOUtils.closeQuietly(writer);
+    }
+
+    private void outputDiagnostics(boolean forLicenses) {
+        final String typeName = forLicenses ? "licenses" : "notices";
+
+        Set seen = forLicenses ? seenLicenses : seenNotices;
+        List<String> duplicated = forLicenses ? duplicatedLicenses : duplicatedNotices;
+        List<String> missing = forLicenses ? missingLicenses : missingNotices;
+
+        System.out.println("Found " + seen.size() + " unique " + typeName);
+
+        if (!duplicated.isEmpty()) {
+            System.out.println("Omitted duplicated " + typeName + " for the following " + duplicated.size() + " JAR files:");
+            for (String duplicate : duplicated) {
+                System.out.println("   " + duplicate);
+            }
+        }
+
+        if (!missing.isEmpty()) {
+            System.out.println("Couldn't find any " + typeName + " in the following " + missing.size() +
+                    " JAR files or their sources. Please check them manually:");
+            for (String missingNotice : missing) {
+                System.out.println("   " + missingNotice);
+            }
+        }
     }
 
     private Notice processJarFile(File jarFile, boolean processMavenPom) throws IOException {
@@ -118,7 +137,7 @@ public class NoticeAggregator {
                         // remember seen notices to avoid duplication
                         seenNotices.add(notice);
                     } else {
-                        duplicated.add(jarFile.getPath());
+                        duplicatedNotices.add(jarFile.getPath());
                         notice = null;
                     }
 
@@ -130,6 +149,15 @@ public class NoticeAggregator {
                     InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> licenseLines = IOUtils.readLines(licenseInputStream);
                     license = new LicenseText(licenseLines);
+
+                    if (!seenLicenses.contains(license)) {
+                        // remember seen notices to avoid duplication
+                        seenLicenses.add(license);
+                    } else {
+                        duplicatedLicenses.add(jarFile.getPath());
+                        license = null;
+                    }
+
                     IOUtils.closeQuietly(licenseInputStream);
 
                 }
@@ -140,6 +168,7 @@ public class NoticeAggregator {
             final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license);
             notice = legalArtifact.getNotice();
         }
+
 
         realJarFile.close();
 
