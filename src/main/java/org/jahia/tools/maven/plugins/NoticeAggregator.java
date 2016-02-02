@@ -132,8 +132,9 @@ public class NoticeAggregator {
             }
         }
 
-        if (!bypassed && notice == null && processMavenPom && pomFilePath != null) {
-            notice = processPOM(realJarFile, pomFilePath);
+        if (processMavenPom && pomFilePath != null) {
+            final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice);
+            notice = legalArtifact.getNotice();
         }
 
         realJarFile.close();
@@ -164,12 +165,12 @@ public class NoticeAggregator {
         return isNotice;
     }
 
-    private Notice processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
+    private LegalArtifact processPOM(JarFile realJarFile, String pomFilePath, Notice notice) throws IOException {
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
 
         MavenXpp3Reader reader = new MavenXpp3Reader();
-        LegalArtifact legalArtifact = null;
+        LegalArtifact legalArtifact;
         try {
             final Model model = reader.read(pomInputStream);
             final List<License> licenses = model.getLicenses();
@@ -181,31 +182,39 @@ public class NoticeAggregator {
             }
 
             final Parent parent = model.getParent();
-            final String parentGroupId = parent.getGroupId();
-            final String parentVersion = parent.getVersion();
+            Artifact parentArtifact = null;
+            String parentGroupId = null;
+            String parentVersion = null;
+            if(parent != null) {
+                parentGroupId = parent.getGroupId();
+                parentVersion = parent.getVersion();
+                parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
+            }
 
             final String groupId = model.getGroupId() != null ? model.getGroupId() : parentGroupId;
             final String version = model.getVersion() != null ? model.getVersion() : parentVersion;
             final Artifact artifact = new DefaultArtifact(groupId, model.getArtifactId(), "sources", "jar", version);
 
-            Artifact parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
 
             legalArtifact = new LegalArtifact(artifact, parentArtifact);
         } catch (XmlPullParserException e) {
             throw new IOException(e);
         }
 
-        File sourceJar = getArtifactFile(legalArtifact.getArtifact());
-        Notice notice = null;
-        if (sourceJar != null && sourceJar.exists()) {
-            notice = processJarFile(sourceJar, false);
+        if (notice == null) {
+            File sourceJar = getArtifactFile(legalArtifact.getArtifact());
+            if (sourceJar != null && sourceJar.exists()) {
+                notice = processJarFile(sourceJar, false);
+            }
         }
+
+        legalArtifact.setNotice(notice);
 
         if (notice == null) {
             missingNotices.add(realJarFile.getName());
         }
 
-        return notice;
+        return legalArtifact;
     }
 
     private File getArtifactFile(Artifact artifact) {
