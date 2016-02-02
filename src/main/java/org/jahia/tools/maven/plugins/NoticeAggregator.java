@@ -54,6 +54,7 @@ public class NoticeAggregator {
                 final List<String> notice = processJarFile(jarFile, true);
                 if (!notice.isEmpty()) {
                     allNoticeLines.add("Notice for " + jarFile.getName());
+                    allNoticeLines.add("---------------------------------------------------------------------------------------------------");
                     allNoticeLines.addAll(notice);
                     allNoticeLines.add("\n");
                 }
