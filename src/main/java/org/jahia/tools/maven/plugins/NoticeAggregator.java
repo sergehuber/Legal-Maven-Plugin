@@ -54,7 +54,7 @@ public class NoticeAggregator {
 
     public void execute() {
         Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[]{"jar"}, true);
-        List<String> allNoticeLines = new ArrayList<>();
+        List<String> allNoticeLines = new LinkedList<>();
         for (File jarFile : jarFiles) {
             try {
                 Notice notice = processJarFile(jarFile, true);
