@@ -178,7 +178,7 @@ public class NoticeAggregator {
     private List<String> processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
-        final List<Artifact> embeddedArtifacts = new ArrayList<Artifact>();
+        final List<LegalArtifact> embeddedArtifacts = new ArrayList<LegalArtifact>();
         try {
             SAXBuilder jdomBuilder = new SAXBuilder();
             Document jdomDocument = jdomBuilder.build(pomInputStream);
@@ -216,14 +216,16 @@ public class NoticeAggregator {
                 }
             }
             Artifact artifact = new DefaultArtifact(groupId, artifactId, "sources", "jar", version);
-            embeddedArtifacts.add(artifact);
+            Artifact parentArtifact = null; // @todo to be implemented
+            LegalArtifact legalArtifact = new LegalArtifact(artifact.toString(), artifact, parentArtifact);
+            embeddedArtifacts.add(legalArtifact);
         } catch (JDOMException e) {
             e.printStackTrace();
         }
 
         final List<String> allNoticeLines = new LinkedList<String>();
-        for (Artifact embeddedArtifact : embeddedArtifacts) {
-            File sourceJar = getArtifactFile(embeddedArtifact);
+        for (LegalArtifact embeddedArtifact : embeddedArtifacts) {
+            File sourceJar = getArtifactFile(embeddedArtifact.getArtifact());
             if (sourceJar != null && sourceJar.exists()) {
                 allNoticeLines.addAll(processJarFile(sourceJar, false));
             }
