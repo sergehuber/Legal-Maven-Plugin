@@ -35,9 +35,10 @@ public class NoticeAggregator {
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
 
-    private final Set<List<String>> seenNotices = new HashSet<List<String>>(201);
-    private final List<String> duplicated = new LinkedList<String>();
-    private final List<String> missingNotices = new LinkedList<String>();
+    private final Map<String, LegalArtifact> artifacts = new HashMap<>(201);
+    private final Set<Notice> seenNotices = new HashSet<>(201);
+    private final List<String> duplicated = new LinkedList<>();
+    private final List<String> missingNotices = new LinkedList<>();
 
     public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories) {
         this.rootDirectory = rootDirectory;
@@ -48,15 +49,17 @@ public class NoticeAggregator {
 
     public void execute() {
         Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[]{"jar"}, true);
-        List<String> allNoticeLines = new ArrayList<String>();
+        List<String> allNoticeLines = new ArrayList<>();
         for (File jarFile : jarFiles) {
             try {
-                final List<String> notice = processJarFile(jarFile, true);
-                if (!notice.isEmpty()) {
+                Notice notice = processJarFile(jarFile, true);
+                if (notice != null) {
                     allNoticeLines.add("Notice for " + jarFile.getName());
                     allNoticeLines.add("---------------------------------------------------------------------------------------------------");
-                    allNoticeLines.addAll(notice);
+                    allNoticeLines.add(notice.toString());
                     allNoticeLines.add("\n");
+                } else {
+                    System.out.println("No notice was found for " + jarFile.getName());
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -96,12 +99,12 @@ public class NoticeAggregator {
         IOUtils.closeQuietly(writer);
     }
 
-    private List<String> processJarFile(File jarFile, boolean processMavenPom) throws IOException {
+    private Notice processJarFile(File jarFile, boolean processMavenPom) throws IOException {
         JarFile realJarFile = new JarFile(jarFile);
         Enumeration<JarEntry> jarEntries = realJarFile.entries();
-        List<String> allNoticeLines = new ArrayList<String>();
         String pomFilePath = null;
         boolean bypassed = false;
+        Notice notice = null;
 
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
@@ -110,33 +113,18 @@ public class NoticeAggregator {
                 if (isNotice(fileName, jarFile)) {
                     InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
+                    notice = new Notice(noticeLines);
 
-                    if (!seenNotices.contains(noticeLines)) {
+                    if (!seenNotices.contains(notice)) {
                         // remember seen notices to avoid duplication
-                        seenNotices.add(new ArrayList<String>(noticeLines));
-
-                        // first skip all empty lines
-                        while (noticeLines.get(0).isEmpty()) {
-                            noticeLines.remove(0);
-                        }
-                        // check if we don't have the standard Apache notice
-                        final int i = noticeLines.indexOf("This product includes software developed at");
-                        if (i >= 0) {
-                            noticeLines.remove(i);
-                            noticeLines.remove(i);
-                        }
-
-                        // skip all remaining empty lines
-                        while (noticeLines.get(noticeLines.size() - 1).isEmpty()) {
-                            noticeLines.remove(noticeLines.size() - 1);
-                        }
-
-                        allNoticeLines.addAll(noticeLines);
-                        IOUtils.closeQuietly(noticeInputStream);
+                        seenNotices.add(notice);
                     } else {
                         bypassed = true;
                         duplicated.add(jarFile.getPath());
+                        notice = null;
                     }
+
+                    IOUtils.closeQuietly(noticeInputStream);
                 } else if (fileName.endsWith("pom.xml")) {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
@@ -144,13 +132,13 @@ public class NoticeAggregator {
             }
         }
 
-        if (!bypassed && allNoticeLines.size() == 0 && processMavenPom && pomFilePath != null) {
-            allNoticeLines = processPOM(realJarFile, pomFilePath);
+        if (!bypassed && notice == null && processMavenPom && pomFilePath != null) {
+            notice = processPOM(realJarFile, pomFilePath);
         }
 
         realJarFile.close();
 
-        return allNoticeLines;
+        return notice;
     }
 
     private boolean isNotice(String fileName, File jarFile) {
@@ -176,12 +164,12 @@ public class NoticeAggregator {
         return isNotice;
     }
 
-    private List<String> processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
+    private Notice processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
 
-        final List<LegalArtifact> embeddedArtifacts = new ArrayList<LegalArtifact>();
         MavenXpp3Reader reader = new MavenXpp3Reader();
+        LegalArtifact legalArtifact = null;
         try {
             final Model model = reader.read(pomInputStream);
             final List<License> licenses = model.getLicenses();
@@ -202,25 +190,22 @@ public class NoticeAggregator {
 
             Artifact parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
 
-            LegalArtifact legalArtifact = new LegalArtifact(artifact, parentArtifact);
-            embeddedArtifacts.add(legalArtifact);
+            legalArtifact = new LegalArtifact(artifact, parentArtifact);
         } catch (XmlPullParserException e) {
             throw new IOException(e);
         }
 
-        final List<String> allNoticeLines = new LinkedList<String>();
-        for (LegalArtifact embeddedArtifact : embeddedArtifacts) {
-            File sourceJar = getArtifactFile(embeddedArtifact.getArtifact());
-            if (sourceJar != null && sourceJar.exists()) {
-                allNoticeLines.addAll(processJarFile(sourceJar, false));
-            }
+        File sourceJar = getArtifactFile(legalArtifact.getArtifact());
+        Notice notice = null;
+        if (sourceJar != null && sourceJar.exists()) {
+            notice = processJarFile(sourceJar, false);
         }
 
-        if (allNoticeLines.size() == 0) {
+        if (notice == null) {
             missingNotices.add(realJarFile.getName());
         }
 
-        return allNoticeLines;
+        return notice;
     }
 
     private File getArtifactFile(Artifact artifact) {
