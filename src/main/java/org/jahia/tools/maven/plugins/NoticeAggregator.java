@@ -34,7 +34,8 @@ public class NoticeAggregator {
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
 
-    private final Map<String, LegalArtifact> artifacts = new HashMap<>(201);
+    private final Map<String, SortedSet<LegalArtifact>> artifacts = new HashMap<>(201);
+
     private final Set<String> missingPOMs = new TreeSet<>();
 
     private final Set<LicenseText> seenLicenses = new HashSet<>(201);
@@ -55,6 +56,7 @@ public class NoticeAggregator {
     public void execute() {
         Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[]{"jar"}, true);
         List<String> allNoticeLines = new LinkedList<>();
+        List<String> missing = new LinkedList<>();
         for (File jarFile : jarFiles) {
             try {
                 Notice notice = processJarFile(jarFile, true);
@@ -64,7 +66,7 @@ public class NoticeAggregator {
                     allNoticeLines.add(notice.toString());
                     allNoticeLines.add("\n");
                 } else {
-                    System.out.println("No notice was found for " + jarFile.getName());
+                    missing.add(jarFile.getName());
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -74,6 +76,12 @@ public class NoticeAggregator {
         outputDiagnostics(false);
         outputDiagnostics(true);
 
+        System.out.println("Processed artifacts: ");
+        for (String groupId : artifacts.keySet()) {
+            System.out.println(groupId + ":");
+            final SortedSet<LegalArtifact> artifacts = this.artifacts.get(groupId);
+            for (LegalArtifact artifact : artifacts) {
+                System.out.println("   " + artifact.getArtifactGAV());
             }
         }
 
@@ -247,8 +255,16 @@ public class NoticeAggregator {
             final String version = model.getVersion() != null ? model.getVersion() : parentVersion;
             final Artifact artifact = new DefaultArtifact(groupId, model.getArtifactId(), "sources", "jar", version);
 
-
             legalArtifact = new LegalArtifact(artifact, parentArtifact);
+
+            final String artifactGroup = legalArtifact.getArtifact().getGroupId();
+            SortedSet<LegalArtifact> legalArtifacts = artifacts.get(artifactGroup);
+            if (legalArtifacts == null) {
+                legalArtifacts = new TreeSet<>();
+                artifacts.put(artifactGroup, legalArtifacts);
+            }
+            legalArtifacts.add(legalArtifact);
+
         } catch (XmlPullParserException e) {
             throw new IOException(e);
         }
