@@ -8,11 +8,18 @@
 
     <properties>
         <invoker.debug.mavenOpts></invoker.debug.mavenOpts>
+        <scm.version>1.9.4</scm.version>
     </properties>
 
     <name>Legal Maven plugin</name>
     <description>A little Maven plugin to help build Apache-compliant legal files (NOTICE)</description>
     <url>http://maven.apache.org</url>
+
+    <scm>
+        <url>https://github.com/sergehuber/Legal-Maven-Plugin</url>
+        <connection>scm:git:git://github.com/sergehuber/Legal-Maven-Plugin.git</connection>
+        <developerConnection>scm:git:git@github.com:sergehuber/Legal-Maven-Plugin.git</developerConnection>
+    </scm>
 
     <licenses>
         <license>
@@ -26,6 +33,11 @@
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-plugin-api</artifactId>
+            <version>3.3.9</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-core</artifactId>
             <version>3.3.9</version>
         </dependency>
         <dependency>
@@ -62,6 +74,31 @@
             <artifactId>maven-model</artifactId>
             <version>3.3.9</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.apache.maven.scm</groupId>
+            <artifactId>maven-scm-providers-standard</artifactId>
+            <version>${scm.version}</version>
+            <type>pom</type>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven.scm</groupId>
+            <artifactId>maven-scm-manager-plexus</artifactId>
+            <version>${scm.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven.scm</groupId>
+            <artifactId>maven-scm-api</artifactId>
+            <version>${scm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven.scm</groupId>
+            <artifactId>maven-scm-provider-svn-commons</artifactId>
+            <version>${scm.version}</version>
+        </dependency>
+
     </dependencies>
 
     <profiles>

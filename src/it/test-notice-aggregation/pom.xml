@@ -30,6 +30,12 @@
         <karaf.version>4.0.4</karaf.version>
     </properties>
 
+    <scm>
+        <url>https://github.com/sergehuber/Legal-Maven-Plugin</url>
+        <connection>scm:git:git://github.com/sergehuber/Legal-Maven-Plugin.git</connection>
+        <developerConnection>scm:git:git@github.com:sergehuber/Legal-Maven-Plugin.git</developerConnection>
+    </scm>
+
     <dependencies>
 
     </dependencies>

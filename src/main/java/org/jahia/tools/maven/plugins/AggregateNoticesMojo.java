@@ -18,6 +18,12 @@ package org.jahia.tools.maven.plugins;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.project.MavenProject;
+import org.apache.maven.scm.ScmFileSet;
+import org.apache.maven.scm.command.checkout.CheckOutScmResult;
+import org.apache.maven.scm.manager.ScmManager;
+import org.apache.maven.scm.provider.ScmProvider;
+import org.apache.maven.scm.repository.ScmRepository;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
@@ -70,6 +76,21 @@ public class AggregateNoticesMojo
     private List<RemoteRepository> pluginRepos;
 
     /**
+     * SCM Manager component to be injected.
+     * @component
+     */
+    private ScmManager scmManager;
+
+    /**
+     * The Maven project.
+     *
+     * @parameter property="project"
+     * @required
+     * @readonly
+     */
+    private MavenProject project;
+
+    /**
      * Location of the file.
      * @parameter property="project.build.directory"
      * @required
@@ -88,5 +109,27 @@ public class AggregateNoticesMojo
 
         NoticeAggregator noticeAggregator = new NoticeAggregator(f, repoSystem, repoSession, projectRepos);
         noticeAggregator.execute();
+
+        //get data from project
+        if (project.getScm() != null) {
+            String developerConnection = project.getScm().getDeveloperConnection();
+
+            File wcDir = new File(project.getBuild().getDirectory(), "checkout");
+            if (!wcDir.exists()) {
+                wcDir.mkdirs();
+            }
+            ScmProvider scmProvider;
+            try {
+                scmProvider = scmManager.getProviderByUrl(developerConnection);
+                ScmRepository scmRepository = scmManager.makeScmRepository(developerConnection);
+                CheckOutScmResult scmResult = scmProvider.checkOut(scmRepository, new ScmFileSet(wcDir));
+                if (!scmResult.isSuccess()) {
+                    getLog().error(String.format("Fail to chckout artifact %s to %s", project.getArtifact(), wcDir));
+                }
+            } catch (Exception e) {
+                throw new MojoExecutionException("Fail to checkout.", e);
+            }
+        }
+
     }
 }
