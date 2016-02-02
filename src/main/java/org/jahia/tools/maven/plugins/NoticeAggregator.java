@@ -2,6 +2,11 @@ package org.jahia.tools.maven.plugins;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.maven.model.License;
+import org.apache.maven.model.Model;
+import org.apache.maven.model.Parent;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
@@ -10,11 +15,6 @@ import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
-import org.jdom2.Document;
-import org.jdom2.Element;
-import org.jdom2.JDOMException;
-import org.jdom2.Namespace;
-import org.jdom2.input.SAXBuilder;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -179,49 +179,33 @@ public class NoticeAggregator {
     private List<String> processPOM(JarFile realJarFile, String pomFilePath) throws IOException {
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
+
         final List<LegalArtifact> embeddedArtifacts = new ArrayList<LegalArtifact>();
+        MavenXpp3Reader reader = new MavenXpp3Reader();
         try {
-            SAXBuilder jdomBuilder = new SAXBuilder();
-            Document jdomDocument = jdomBuilder.build(pomInputStream);
-            Namespace mavenNamespace = Namespace.getNamespace("http://maven.apache.org/POM/4.0.0");
-            Element rootElement = jdomDocument.getRootElement();
-            String groupId = null;
-            Element groupIdElement = rootElement.getChild("groupId", mavenNamespace);
-            if (groupIdElement != null) {
-                groupId = groupIdElement.getTextTrim();
-            } else {
-                Element parentElement = rootElement.getChild("parent", mavenNamespace);
-                if (parentElement != null) {
-                    groupIdElement = parentElement.getChild("groupId", mavenNamespace);
-                    if (groupIdElement != null) {
-                        groupId = groupIdElement.getTextTrim();
-                    }
+            final Model model = reader.read(pomInputStream);
+            final List<License> licenses = model.getLicenses();
+            if (licenses != null && !licenses.isEmpty()) {
+                System.out.println(model.getId() + " defined the following licenses:");
+                for (License license : licenses) {
+                    System.out.println("   " + license.getName());
                 }
             }
-            String artifactId = null;
-            Element artifactIdElement = rootElement.getChild("artifactId", mavenNamespace);
-            if (artifactIdElement != null) {
-                artifactId = artifactIdElement.getTextTrim();
-            }
-            String version = null;
-            Element versionElement = rootElement.getChild("version", mavenNamespace);
-            if (versionElement != null) {
-                version = versionElement.getTextTrim();
-            } else {
-                Element parentElement = rootElement.getChild("parent", mavenNamespace);
-                if (parentElement != null) {
-                    versionElement = parentElement.getChild("version", mavenNamespace);
-                    if (versionElement != null) {
-                        version = versionElement.getTextTrim();
-                    }
-                }
-            }
-            Artifact artifact = new DefaultArtifact(groupId, artifactId, "sources", "jar", version);
-            Artifact parentArtifact = null; // @todo to be implemented
-            LegalArtifact legalArtifact = new LegalArtifact(artifact.toString(), artifact, parentArtifact);
+
+            final Parent parent = model.getParent();
+            final String parentGroupId = parent.getGroupId();
+            final String parentVersion = parent.getVersion();
+
+            final String groupId = model.getGroupId() != null ? model.getGroupId() : parentGroupId;
+            final String version = model.getVersion() != null ? model.getVersion() : parentVersion;
+            final Artifact artifact = new DefaultArtifact(groupId, model.getArtifactId(), "sources", "jar", version);
+
+            Artifact parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
+
+            LegalArtifact legalArtifact = new LegalArtifact(artifact, parentArtifact);
             embeddedArtifacts.add(legalArtifact);
-        } catch (JDOMException e) {
-            e.printStackTrace();
+        } catch (XmlPullParserException e) {
+            throw new IOException(e);
         }
 
         final List<String> allNoticeLines = new LinkedList<String>();
@@ -241,8 +225,7 @@ public class NoticeAggregator {
 
     private File getArtifactFile(Artifact artifact) {
         ArtifactRequest request = new ArtifactRequest();
-        request.setArtifact(
-                artifact);
+        request.setArtifact(artifact);
         request.setRepositories(remoteRepositories);
 
         ArtifactResult artifactResult;
