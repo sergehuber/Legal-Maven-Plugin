@@ -2,7 +2,6 @@ package org.jahia.tools.maven.plugins;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.maven.model.License;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -173,7 +172,7 @@ public class NoticeAggregator {
     private boolean isLicense(String fileName, File jarFile) {
         boolean isLicense = fileName.endsWith("LICENSE");
 
-        if(!isLicense) {
+        if (!isLicense) {
             String lowerCase = fileName.toLowerCase();
             // retrieve last part of name
             String separator = lowerCase.contains("\\") ? "\\" : "/";
@@ -200,19 +199,11 @@ public class NoticeAggregator {
         LegalArtifact legalArtifact;
         try {
             final Model model = reader.read(pomInputStream);
-            final List<License> licenses = model.getLicenses();
-            if (licenses != null && !licenses.isEmpty()) {
-                System.out.println(model.getId() + " defined the following licenses:");
-                for (License pomLicense : licenses) {
-                    System.out.println("   " + pomLicense.getName());
-                }
-            }
-
             final Parent parent = model.getParent();
             Artifact parentArtifact = null;
             String parentGroupId = null;
             String parentVersion = null;
-            if(parent != null) {
+            if (parent != null) {
                 parentGroupId = parent.getGroupId();
                 parentVersion = parent.getVersion();
                 parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
