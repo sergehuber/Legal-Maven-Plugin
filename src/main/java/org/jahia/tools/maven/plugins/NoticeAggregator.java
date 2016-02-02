@@ -35,6 +35,7 @@ public class NoticeAggregator {
     private final List<RemoteRepository> remoteRepositories;
 
     private final Map<String, LegalArtifact> artifacts = new HashMap<>(201);
+    private final Set<String> missingPOMs = new TreeSet<>();
 
     private final Set<LicenseText> seenLicenses = new HashSet<>(201);
     private final List<String> duplicatedLicenses = new LinkedList<>();
@@ -164,9 +165,13 @@ public class NoticeAggregator {
             }
         }
 
-        if (processMavenPom && pomFilePath != null) {
-            final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license);
-            notice = legalArtifact.getNotice();
+        if (processMavenPom) {
+            if (pomFilePath == null) {
+                missingPOMs.add(realJarFile.getName());
+            } else {
+                final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license);
+                notice = legalArtifact.getNotice();
+            }
         }
 
 
