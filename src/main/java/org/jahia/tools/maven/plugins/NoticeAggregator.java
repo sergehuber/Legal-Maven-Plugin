@@ -60,14 +60,14 @@ public class NoticeAggregator {
         for (File jarFile : jarFiles) {
             try {
                 Notice notice = processJarFile(jarFile, true);
-                if (notice != null) {
+                /*if (notice != null) {
                     allNoticeLines.add("Notice for " + jarFile.getName());
                     allNoticeLines.add("---------------------------------------------------------------------------------------------------");
                     allNoticeLines.add(notice.toString());
                     allNoticeLines.add("\n");
                 } else {
                     missing.add(jarFile.getName());
-                }
+                }*/
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -79,9 +79,28 @@ public class NoticeAggregator {
         System.out.println("Processed artifacts: ");
         for (String groupId : artifacts.keySet()) {
             System.out.println(groupId + ":");
+            allNoticeLines.add("Notice for " + groupId);
+            allNoticeLines.add("---------------------------------------------------------------------------------------------------");
             final SortedSet<LegalArtifact> artifacts = this.artifacts.get(groupId);
+            Set<Notice> noticesForGroup = new HashSet<>(artifacts.size());
+            Set<LicenseText> licensesForGroup = new HashSet<>(artifacts.size());
             for (LegalArtifact artifact : artifacts) {
                 System.out.println("   " + artifact.getArtifactGAV());
+                final Notice notice = artifact.getNotice();
+                if (notice != null) {
+                    noticesForGroup.add(notice);
+                }
+                final LicenseText license = artifact.getLicense();
+                if (license != null) {
+                    licensesForGroup.add(license);
+                }
+            }
+
+
+            // notices
+            for (Notice notice : noticesForGroup) {
+                allNoticeLines.add(notice.toString());
+                allNoticeLines.add("\n");
             }
         }
 
