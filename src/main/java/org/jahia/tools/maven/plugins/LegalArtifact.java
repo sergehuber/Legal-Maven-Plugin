@@ -7,13 +7,13 @@ import org.eclipse.aether.artifact.Artifact;
  */
 public class LegalArtifact implements Comparable<LegalArtifact> {
 
-    String artifactGAV;
+    private final String artifactGAV;
 
-    Artifact artifact;
-    Artifact parentArtifact;
+    private final Artifact artifact;
+    private final Artifact parentArtifact;
 
-    public LegalArtifact(String artifactGAV, Artifact artifact, Artifact parentArtifact) {
-        this.artifactGAV = artifactGAV;
+    public LegalArtifact(Artifact artifact, Artifact parentArtifact) {
+        this.artifactGAV = artifact.toString();
         this.artifact = artifact;
         this.parentArtifact = parentArtifact;
     }
