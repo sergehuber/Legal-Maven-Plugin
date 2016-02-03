@@ -1,5 +1,5 @@
 # Legal-Maven-Plugin
-A little Maven plugin to help build Apache-compliant files (NOTICE)
+A little Maven plugin to help build Apache-compliant files (NOTICE and LICENSE)
 
 # Usage
 
@@ -11,12 +11,14 @@ Setup in your project like this :
                 <version>1.0-SNAPSHOT</version>
                 <configuration>
                     <outputDirectory>${project.build.directory}/directoryToScan</outputDirectory>
+                    <verbose>false</verbose> <!-- true to have the plugin output information on what it's doing -->
+                    <outputDiagnotics>true</outputDiagnostics> <!-- true to have the plugin output diagnostics about found notices and licenses -->
                 </configuration>
                 <executions>
                     <execution>
-                        <id>aggregate-notices</id>
+                        <id>aggregate-legal-artifacts</id>
                         <goals>
-                            <goal>aggregate-notices</goal>
+                            <goal>aggregate-legal-artifacts</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -26,10 +28,11 @@ Then build your project using :
 
     mvn clean install
     
-If all went well a target/NOTICE-generated file will be created containing the aggregation of the contents of all the
-NOTICE files found in JARs inside the directory specified in the coImpnfiguration.
+If all went well a target/NOTICE-aggregated and target/LICENSE-aggregated files will be created containing the aggregation
+of the contents of all the NOTICE and LICENSE files found with duplicates removed in JARs inside the directory specified
+in the configuration.
 
-To run the plugin directly, just launch `mvn legal:aggregate-notices`
+To run the plugin directly, just launch `mvn legal:aggregate-legal-artifacts`
 
 # Debugging the integration test
 
