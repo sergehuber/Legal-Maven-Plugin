@@ -29,19 +29,16 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.List;
 
 /**
- * Goal which touches a timestamp file.
+ * Aggregates NOTICE and LICENSE files from dependencies into aggregated versions.
  *
- * @goal aggregate-notices
+ * @goal aggregate-legal-artifacts
  * 
  * @phase process-resources
  */
-public class AggregateNoticesMojo
-    extends AbstractMojo
+public class AggregateLegalArtifactsMojo extends AbstractMojo
 {
 
     /**
@@ -121,8 +118,8 @@ public class AggregateNoticesMojo
             f.mkdirs();
         }
 
-        NoticeAggregator noticeAggregator = new NoticeAggregator(f, repoSystem, repoSession, projectRepos, verbose, outputDiagnostics);
-        noticeAggregator.execute();
+        LegalArtifactAggregator legalArtifactAggregator = new LegalArtifactAggregator(f, repoSystem, repoSession, projectRepos, verbose, outputDiagnostics);
+        legalArtifactAggregator.execute();
 
         //get data from project
         if (project.getScm() != null) {
@@ -138,7 +135,7 @@ public class AggregateNoticesMojo
                 ScmRepository scmRepository = scmManager.makeScmRepository(developerConnection);
                 CheckOutScmResult scmResult = scmProvider.checkOut(scmRepository, new ScmFileSet(wcDir));
                 if (!scmResult.isSuccess()) {
-                    getLog().error(String.format("Fail to chckout artifact %s to %s", project.getArtifact(), wcDir));
+                    getLog().error(String.format("Fail to checkout artifact %s to %s", project.getArtifact(), wcDir));
                 }
             } catch (Exception e) {
                 throw new MojoExecutionException("Fail to checkout.", e);

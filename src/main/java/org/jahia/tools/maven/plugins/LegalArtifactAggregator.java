@@ -26,7 +26,7 @@ import java.util.jar.JarFile;
 /**
  * Created by loom on 29.01.16.
  */
-public class NoticeAggregator {
+public class LegalArtifactAggregator {
 
     private final File rootDirectory;
 
@@ -50,8 +50,8 @@ public class NoticeAggregator {
     private final boolean outputDiagnostics;
 
 
-    public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories,
-                            boolean verbose, boolean outputDiagnostics) {
+    public LegalArtifactAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories,
+                                   boolean verbose, boolean outputDiagnostics) {
         this.rootDirectory = rootDirectory;
         this.repositorySystem = repositorySystem;
         this.repositorySystemSession = repositorySystemSession;
