@@ -46,11 +46,18 @@ public class NoticeAggregator {
     private final List<String> duplicatedNotices = new LinkedList<>();
     private final List<String> missingNotices = new LinkedList<>();
 
-    public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories) {
+    private final boolean verbose;
+    private final boolean outputDiagnostics;
+
+
+    public NoticeAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories,
+                            boolean verbose, boolean outputDiagnostics) {
         this.rootDirectory = rootDirectory;
         this.repositorySystem = repositorySystem;
         this.repositorySystemSession = repositorySystemSession;
         this.remoteRepositories = remoteRepositories;
+        this.verbose = verbose;
+        this.outputDiagnostics = outputDiagnostics;
     }
 
     public void execute() {
@@ -59,48 +66,47 @@ public class NoticeAggregator {
         List<String> missing = new LinkedList<>();
         for (File jarFile : jarFiles) {
             try {
-                Notice notice = processJarFile(jarFile, true);
-                /*if (notice != null) {
-                    allNoticeLines.add("Notice for " + jarFile.getName());
-                    allNoticeLines.add("---------------------------------------------------------------------------------------------------");
-                    allNoticeLines.add(notice.toString());
-                    allNoticeLines.add("\n");
-                } else {
-                    missing.add(jarFile.getName());
-                }*/
+                processJarFile(jarFile, true);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
 
-        outputDiagnostics(false);
-        outputDiagnostics(true);
+        if (verbose || outputDiagnostics) {
+            outputDiagnostics(false);
+            outputDiagnostics(true);
+        }
 
-        System.out.println("Processed artifacts: ");
+        if (verbose) {
+            System.out.println("Processed artifacts: ");
+        }
         for (String groupId : artifacts.keySet()) {
-            System.out.println(groupId + ":");
-            allNoticeLines.add("Notice for " + groupId);
-            allNoticeLines.add("---------------------------------------------------------------------------------------------------");
+            if (verbose) {
+                System.out.println(groupId + ":");
+            }
             final SortedSet<LegalArtifact> artifacts = this.artifacts.get(groupId);
             Set<Notice> noticesForGroup = new HashSet<>(artifacts.size());
-            Set<LicenseText> licensesForGroup = new HashSet<>(artifacts.size());
             for (LegalArtifact artifact : artifacts) {
-                System.out.println("   " + artifact.getArtifactGAV());
+                if (verbose) {
+                    System.out.println("   " + artifact.getArtifactGAV());
+                }
                 final Notice notice = artifact.getNotice();
                 if (notice != null) {
                     noticesForGroup.add(notice);
-                }
-                final LicenseText license = artifact.getLicense();
-                if (license != null) {
-                    licensesForGroup.add(license);
+                } else {
+                    missing.add(artifact.getArtifactGAV());
                 }
             }
 
 
             // notices
-            for (Notice notice : noticesForGroup) {
-                allNoticeLines.add(notice.toString());
-                allNoticeLines.add("\n");
+            if(!noticesForGroup.isEmpty()) {
+                allNoticeLines.add("Notice for " + groupId);
+                allNoticeLines.add("---------------------------------------------------------------------------------------------------");
+                for (Notice notice : noticesForGroup) {
+                    allNoticeLines.add(notice.toString());
+                    allNoticeLines.add("\n");
+                }
             }
         }
 
@@ -219,9 +225,11 @@ public class NoticeAggregator {
                 String potential = split[split.length - 1];
                 isNotice = potential.startsWith("notice") && !potential.endsWith(".class");
 
-                if (!isNotice && lowerCase.contains("notice")) {
-                    System.out.println("Potential notice file " + fileName + " in JAR " + jarFile.getName()
-                            + " was NOT handled. You might want to check manually.");
+                if (verbose) {
+                    if (!isNotice && lowerCase.contains("notice")) {
+                        System.out.println("Potential notice file " + fileName + " in JAR " + jarFile.getName()
+                                + " was NOT handled. You might want to check manually.");
+                    }
                 }
             }
 
@@ -242,9 +250,11 @@ public class NoticeAggregator {
                 String potential = split[split.length - 1];
                 isLicense = potential.startsWith("license") && !potential.endsWith(".class");
 
-                if (!isLicense && lowerCase.contains("license")) {
-                    System.out.println("Potential license file " + fileName + " in JAR " + jarFile.getName()
-                            + " was NOT handled. You might want to check manually.");
+                if (verbose) {
+                    if (!isLicense && lowerCase.contains("license")) {
+                        System.out.println("Potential license file " + fileName + " in JAR " + jarFile.getName()
+                                + " was NOT handled. You might want to check manually.");
+                    }
                 }
             }
         }

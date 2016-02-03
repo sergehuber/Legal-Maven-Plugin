@@ -97,6 +97,20 @@ public class AggregateNoticesMojo
      */
     private File outputDirectory;
 
+    /**
+     * Whether or not to output diagnostics.
+     *
+     * @parameter default-value=false
+     */
+    private boolean outputDiagnostics;
+
+    /**
+     * Whether or not to be verbose when running i.e. output diagnostics plus additional information.
+     *
+     * @parameter default-value=false
+     */
+    private boolean verbose;
+
     public void execute()
         throws MojoExecutionException
     {
@@ -107,7 +121,7 @@ public class AggregateNoticesMojo
             f.mkdirs();
         }
 
-        NoticeAggregator noticeAggregator = new NoticeAggregator(f, repoSystem, repoSession, projectRepos);
+        NoticeAggregator noticeAggregator = new NoticeAggregator(f, repoSystem, repoSession, projectRepos, verbose, outputDiagnostics);
         noticeAggregator.execute();
 
         //get data from project
