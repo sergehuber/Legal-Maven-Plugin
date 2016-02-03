@@ -75,9 +75,9 @@
                 <version>@pom.version@</version>
                 <executions>
                     <execution>
-                        <id>aggregate-notices</id>
+                        <id>aggregate-legal-artifacts</id>
                         <goals>
-                            <goal>aggregate-notices</goal>
+                            <goal>aggregate-legal-artifacts</goal>
                         </goals>
                     </execution>
                 </executions>
