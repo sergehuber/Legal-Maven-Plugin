@@ -2,6 +2,7 @@ package org.jahia.tools.maven.plugins;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -68,7 +69,7 @@ public class LegalArtifactAggregator {
             try {
                 processJarFile(jarFile, true);
             } catch (IOException e) {
-                e.printStackTrace();
+                System.err.println("Error handling JAR " + jarFile.getPath() + ". This file will be ignored.");
             }
         }
 
@@ -100,7 +101,7 @@ public class LegalArtifactAggregator {
 
 
             // notices
-            if(!noticesForGroup.isEmpty()) {
+            if (!noticesForGroup.isEmpty()) {
                 allNoticeLines.add("Notice for " + groupId);
                 allNoticeLines.add("---------------------------------------------------------------------------------------------------");
                 for (Notice notice : noticesForGroup) {
@@ -175,8 +176,10 @@ public class LegalArtifactAggregator {
         Notice notice = null;
         LicenseText license = null;
 
+        Set<JarMetadata> embeddedJars = new HashSet<>(7);
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
+
             if (!curJarEntry.isDirectory()) {
                 final String fileName = curJarEntry.getName();
                 if (isNotice(fileName, jarFile)) {
@@ -202,7 +205,7 @@ public class LegalArtifactAggregator {
 
                     license = new LicenseText(licenseLines);
                     final String licenseName = license.getName();
-                    if(seenLicenses.containsKey(licenseName)) {
+                    if (seenLicenses.containsKey(licenseName)) {
                         duplicatedLicenses.add(jarFile.getPath());
                     } else {
                         seenLicenses.put(licenseName, license);
@@ -210,6 +213,24 @@ public class LegalArtifactAggregator {
 
                     IOUtils.closeQuietly(licenseInputStream);
 
+                } else if (fileName.endsWith(".jar")) {
+                    // check if jar name fits maven artifact scheme
+                    final int lastSlash = fileName.lastIndexOf('/');
+                    final String file = lastSlash > 0 ? fileName.substring(lastSlash + 1) : fileName;
+                    final int endVersion = file.lastIndexOf('.');
+                    // look for beginning of version string if any
+                    int begVersion = -1;
+                    int dash = file.indexOf('-');
+                    while (dash > 0 && dash < endVersion) {
+                        if (Character.isDigit(file.charAt(dash + 1))) {
+                            begVersion = dash + 1;
+                            break;
+                        }
+                        dash = file.indexOf('-', dash + 1);
+                    }
+                    if (begVersion != -1) {
+                        embeddedJars.add(new JarMetadata(file.substring(0, begVersion - 1), file.substring(begVersion, endVersion)));
+                    }
                 }
             }
         }
@@ -218,7 +239,7 @@ public class LegalArtifactAggregator {
             if (pomFilePath == null) {
                 missingPOMs.add(realJarFile.getName());
             } else {
-                final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license);
+                final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license, embeddedJars);
                 notice = legalArtifact.getNotice();
             }
         }
@@ -278,7 +299,7 @@ public class LegalArtifactAggregator {
         return isLicense;
     }
 
-    private LegalArtifact processPOM(JarFile realJarFile, String pomFilePath, Notice notice, LicenseText license) throws IOException {
+    private LegalArtifact processPOM(JarFile realJarFile, String pomFilePath, Notice notice, LicenseText license, Set<JarMetadata> embeddedJarNames) throws IOException {
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
 
@@ -294,6 +315,25 @@ public class LegalArtifactAggregator {
                 parentGroupId = parent.getGroupId();
                 parentVersion = parent.getVersion();
                 parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
+            }
+
+            if (!embeddedJarNames.isEmpty()) {
+                final List<Dependency> dependencies = model.getDependencies();
+                Map<String, Dependency> artifactToDep = new HashMap<>(dependencies.size());
+                for (Dependency dependency : dependencies) {
+                    artifactToDep.put(dependency.getArtifactId(), dependency);
+                }
+
+
+                for (JarMetadata jarName : embeddedJarNames) {
+                    final Dependency dependency = artifactToDep.get(jarName.name);
+                    if (dependency != null) {
+                        File jar = getArtifactFile(new DefaultArtifact(dependency.getGroupId(), dependency.getArtifactId(), "sources", "jar", jarName.version));
+                        if (jar != null && jar.exists()) {
+                            processJarFile(jar, true);
+                        }
+                    }
+                }
             }
 
             final String groupId = model.getGroupId() != null ? model.getGroupId() : parentGroupId;
@@ -347,4 +387,38 @@ public class LegalArtifactAggregator {
         return null;
     }
 
+
+    private static class JarMetadata {
+        final String name;
+        final String version;
+
+        public JarMetadata(String name, String version) {
+            this.name = name;
+            this.version = version;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            JarMetadata that = (JarMetadata) o;
+
+            if (name != null ? !name.equals(that.name) : that.name != null) return false;
+            return version != null ? version.equals(that.version) : that.version == null;
+
+        }
+
+        @Override
+        public int hashCode() {
+            int result = name != null ? name.hashCode() : 0;
+            result = 31 * result + (version != null ? version.hashCode() : 0);
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return name + "-" + version;
+        }
+    }
 }
