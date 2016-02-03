@@ -79,14 +79,35 @@ import java.util.List;
 public class LicenseText {
     private final String license;
     private final int hash;
+    private final String name;
 
     public LicenseText(List<String> licenseLines) {
-        StringBuilder stringBuilder = new StringBuilder(1024);
+        StringBuilder stringBuilder = new StringBuilder(4096);
+        name = extractReasonableName(licenseLines);
         for (String licenseLine : licenseLines) {
             stringBuilder.append(licenseLine).append("\n");
         }
         license = stringBuilder.toString();
         hash = license.hashCode();
+    }
+
+    private String extractReasonableName(List<String> licenseLines) {
+        // remove all blank lines
+        while(licenseLines.get(0).trim().isEmpty()) {
+            licenseLines.remove(0);
+        }
+
+        // ignore empty lines and lines containing / to account for licenses containing svn versions or references to web site (W3C for example).
+        int index = 0;
+        for (String licenseLine : licenseLines) {
+            licenseLine = licenseLine.trim();
+            if(licenseLine.isEmpty() || licenseLine.contains("/")) {
+                index++;
+                continue;
+            }
+            break;
+        }
+        return licenseLines.get(index).trim();
     }
 
     @Override
@@ -108,5 +129,9 @@ public class LicenseText {
     @Override
     public String toString() {
         return license;
+    }
+
+    public String getName() {
+        return name;
     }
 }
