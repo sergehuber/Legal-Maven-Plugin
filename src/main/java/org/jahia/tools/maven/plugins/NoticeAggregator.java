@@ -38,7 +38,7 @@ public class NoticeAggregator {
 
     private final Set<String> missingPOMs = new TreeSet<>();
 
-    private final Set<LicenseText> seenLicenses = new HashSet<>(201);
+    private final Map<String, LicenseText> seenLicenses = new HashMap<>(201);
     private final List<String> duplicatedLicenses = new LinkedList<>();
     private final List<String> missingLicenses = new LinkedList<>();
 
@@ -124,12 +124,29 @@ public class NoticeAggregator {
             e.printStackTrace();
         }
         IOUtils.closeQuietly(writer);
+
+        try {
+            File aggregatedLicenseFile = new File(rootDirectory, "LICENSE-aggregated");
+            writer = new FileWriter(aggregatedLicenseFile);
+            for (Map.Entry<String, LicenseText> license : seenLicenses.entrySet()) {
+                if (verbose) {
+                    System.out.println("Adding license " + license.getKey());
+                }
+                writer.append(license.getValue().toString());
+                writer.append("\n\n\n");
+            }
+
+            System.out.println("Aggregated LICENSE created at " + aggregatedLicenseFile.getPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        IOUtils.closeQuietly(writer);
     }
 
     private void outputDiagnostics(boolean forLicenses) {
         final String typeName = forLicenses ? "licenses" : "notices";
 
-        Set seen = forLicenses ? seenLicenses : seenNotices;
+        Set seen = forLicenses ? seenLicenses.entrySet() : seenNotices;
         List<String> duplicated = forLicenses ? duplicatedLicenses : duplicatedNotices;
         List<String> missing = forLicenses ? missingLicenses : missingNotices;
 
@@ -182,14 +199,13 @@ public class NoticeAggregator {
                 } else if (isLicense(fileName, jarFile)) {
                     InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> licenseLines = IOUtils.readLines(licenseInputStream);
-                    license = new LicenseText(licenseLines);
 
-                    if (!seenLicenses.contains(license)) {
-                        // remember seen notices to avoid duplication
-                        seenLicenses.add(license);
-                    } else {
+                    license = new LicenseText(licenseLines);
+                    final String licenseName = license.getName();
+                    if(seenLicenses.containsKey(licenseName)) {
                         duplicatedLicenses.add(jarFile.getPath());
-                        license = null;
+                    } else {
+                        seenLicenses.put(licenseName, license);
                     }
 
                     IOUtils.closeQuietly(licenseInputStream);
