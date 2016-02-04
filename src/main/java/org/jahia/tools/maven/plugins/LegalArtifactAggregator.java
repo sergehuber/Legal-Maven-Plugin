@@ -39,7 +39,7 @@ public class LegalArtifactAggregator {
 
     private final Set<String> missingPOMs = new TreeSet<>();
 
-    private final Map<String, LicenseText> seenLicenses = new HashMap<>(201);
+    private final Map<String, LicenseText> seenLicenses = new HashMap<>(27);
     private final List<String> duplicatedLicenses = new LinkedList<>();
     private final List<String> missingLicenses = new LinkedList<>();
 
@@ -207,6 +207,7 @@ public class LegalArtifactAggregator {
                     final String licenseName = license.getName();
                     if (seenLicenses.containsKey(licenseName)) {
                         duplicatedLicenses.add(jarFile.getPath());
+                        license = null;
                     } else {
                         seenLicenses.put(licenseName, license);
                     }
@@ -354,7 +355,7 @@ public class LegalArtifactAggregator {
             throw new IOException(e);
         }
 
-        if (notice == null) {
+        if (notice == null || license == null) {
             File sourceJar = getArtifactFile(legalArtifact.getArtifact());
             if (sourceJar != null && sourceJar.exists()) {
                 notice = processJarFile(sourceJar, false);
@@ -366,6 +367,10 @@ public class LegalArtifactAggregator {
 
         if (notice == null) {
             missingNotices.add(realJarFile.getName());
+        }
+
+        if(license == null) {
+            missingLicenses.add(realJarFile.getName());
         }
 
         return legalArtifact;
