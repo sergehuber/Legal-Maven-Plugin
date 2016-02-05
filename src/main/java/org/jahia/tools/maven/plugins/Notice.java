@@ -76,36 +76,40 @@ import java.util.List;
 /**
  * @author Christophe Laprun
  */
-public class Notice {
+class Notice {
     private final String notice;
     private final int hash;
 
-    public Notice(List<String> noticeLines) {
-        // first skip all empty lines
-        while (noticeLines.get(0).isEmpty()) {
-            noticeLines.remove(0);
-        }
-
-        // check if we don't have the standard Apache notice
-        final int i = noticeLines.indexOf("This product includes software developed at");
-        if (i >= 0) {
-            noticeLines.remove(i);
-            noticeLines.remove(i);
-        }
-
-        // skip all remaining empty lines
-        while (noticeLines.get(noticeLines.size() - 1).isEmpty()) {
-            noticeLines.remove(noticeLines.size() - 1);
-        }
-
-
+    Notice(List<String> noticeLines) {
         StringBuilder stringBuilder = new StringBuilder(1024);
+        boolean skip = false;
         for (String noticeLine : noticeLines) {
-            stringBuilder.append(noticeLine).append("\n");
+            if (skip) {
+                skip = false;
+                continue;
+            }
+            final AcceptStatus status = accept(noticeLine);
+            skip = status.skipNext;
+            if (status.accept) {
+                stringBuilder.append(noticeLine).append("\n");
+            }
+
         }
         notice = stringBuilder.toString();
         hash = notice.hashCode();
     }
+
+    private AcceptStatus accept(String noticeLine) {
+        boolean reject = noticeLine.isEmpty() || noticeLine.startsWith("/") || noticeLine.startsWith("=");
+        if (reject) {
+            return AcceptStatus.REJECTED_NO_SKIP;
+        } else if (noticeLine.startsWith("This product includes software developed")) {
+            return AcceptStatus.REJECTED_SKIP;
+        } else {
+            return AcceptStatus.ACCEPTED_NO_SKIP;
+        }
+    }
+
 
     @Override
     public boolean equals(Object o) {
@@ -126,5 +130,19 @@ public class Notice {
     @Override
     public String toString() {
         return notice;
+    }
+
+    private static class AcceptStatus {
+        static final AcceptStatus REJECTED_NO_SKIP = new AcceptStatus(false, false);
+        static final AcceptStatus ACCEPTED_NO_SKIP = new AcceptStatus(true, false);
+        static final AcceptStatus REJECTED_SKIP = new AcceptStatus(false, true);
+        static final AcceptStatus ACCEPTED_SKIP = new AcceptStatus(true, true);
+        private final boolean accept;
+        private final boolean skipNext;
+
+        private AcceptStatus(boolean accept, boolean skipNext) {
+            this.accept = accept;
+            this.skipNext = skipNext;
+        }
     }
 }

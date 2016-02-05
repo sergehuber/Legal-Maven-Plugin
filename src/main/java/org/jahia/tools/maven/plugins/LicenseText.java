@@ -76,19 +76,19 @@ import java.util.List;
 /**
  * @author Christophe Laprun
  */
-public class LicenseText {
+class LicenseText {
     private final String license;
     private final int hash;
     private final String name;
 
-    public LicenseText(List<String> licenseLines) {
+    LicenseText(List<String> licenseLines) {
         StringBuilder stringBuilder = new StringBuilder(4096);
         name = extractReasonableName(licenseLines);
         for (String licenseLine : licenseLines) {
             stringBuilder.append(licenseLine).append("\n");
         }
         license = stringBuilder.toString();
-        hash = license.hashCode();
+        hash = name.hashCode();
     }
 
     private String extractReasonableName(List<String> licenseLines) {
@@ -131,7 +131,7 @@ public class LicenseText {
         return license;
     }
 
-    public String getName() {
+    String getName() {
         return name;
     }
 }

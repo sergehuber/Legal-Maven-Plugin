@@ -16,10 +16,7 @@ import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -27,23 +24,22 @@ import java.util.jar.JarFile;
 /**
  * Created by loom on 29.01.16.
  */
-public class LegalArtifactAggregator {
+class LegalArtifactAggregator {
 
+    private static final String START_INDENT = "";
+    private static final String INDENT_STEP = "  ";
     private final File rootDirectory;
 
     private final RepositorySystem repositorySystem;
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
 
-    private final Map<String, SortedSet<LegalArtifact>> artifacts = new HashMap<>(201);
-
-    private final Set<String> missingPOMs = new TreeSet<>();
-
-    private final Map<String, LicenseText> seenLicenses = new HashMap<>(27);
+    private final Map<String, LicenseText> seenLicenses = new HashMap<>(101);
     private final List<String> duplicatedLicenses = new LinkedList<>();
     private final List<String> missingLicenses = new LinkedList<>();
 
-    private final Set<Notice> seenNotices = new HashSet<>(201);
+
+    private final SortedMap<String, Set<Notice>> projectToNotice = new TreeMap<>();
     private final List<String> duplicatedNotices = new LinkedList<>();
     private final List<String> missingNotices = new LinkedList<>();
 
@@ -51,8 +47,8 @@ public class LegalArtifactAggregator {
     private final boolean outputDiagnostics;
 
 
-    public LegalArtifactAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories,
-                                   boolean verbose, boolean outputDiagnostics) {
+    LegalArtifactAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories,
+                            boolean verbose, boolean outputDiagnostics) {
         this.rootDirectory = rootDirectory;
         this.repositorySystem = repositorySystem;
         this.repositorySystemSession = repositorySystemSession;
@@ -61,15 +57,14 @@ public class LegalArtifactAggregator {
         this.outputDiagnostics = outputDiagnostics;
     }
 
-    public void execute() {
+    void execute() {
         Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[]{"jar"}, true);
         List<String> allNoticeLines = new LinkedList<>();
-        List<String> missing = new LinkedList<>();
         for (File jarFile : jarFiles) {
             try {
-                processJarFile(jarFile, true);
+                processJarFile(jarFile, true, 0, true, true);
             } catch (IOException e) {
-                System.err.println("Error handling JAR " + jarFile.getPath() + ". This file will be ignored.");
+                output(START_INDENT, "Error handling JAR " + jarFile.getPath() + ". This file will be ignored.", true, true);
             }
         }
 
@@ -78,33 +73,15 @@ public class LegalArtifactAggregator {
             outputDiagnostics(true);
         }
 
-        if (verbose) {
-            System.out.println("Processed artifacts: ");
-        }
-        for (String groupId : artifacts.keySet()) {
-            if (verbose) {
-                System.out.println(groupId + ":");
-            }
-            final SortedSet<LegalArtifact> artifacts = this.artifacts.get(groupId);
-            Set<Notice> noticesForGroup = new HashSet<>(artifacts.size());
-            for (LegalArtifact artifact : artifacts) {
-                if (verbose) {
-                    System.out.println("   " + artifact.getArtifactGAV());
-                }
-                final Notice notice = artifact.getNotice();
-                if (notice != null) {
-                    noticesForGroup.add(notice);
-                } else {
-                    missing.add(artifact.getArtifactGAV());
-                }
-            }
-
-
-            // notices
-            if (!noticesForGroup.isEmpty()) {
-                allNoticeLines.add("Notice for " + groupId);
+        output(START_INDENT, "Processed projects: ");
+        for (Map.Entry<String, Set<Notice>> entry : projectToNotice.entrySet()) {
+            final String project = entry.getKey();
+            output(START_INDENT, project);
+            final Set<Notice> notices = entry.getValue();
+            if (!notices.isEmpty()) {
+                allNoticeLines.add("Notice for " + project);
                 allNoticeLines.add("---------------------------------------------------------------------------------------------------");
-                for (Notice notice : noticesForGroup) {
+                for (Notice notice : notices) {
                     allNoticeLines.add(notice.toString());
                     allNoticeLines.add("\n");
                 }
@@ -120,7 +97,7 @@ public class LegalArtifactAggregator {
                 writer.append("\n");
             }
 
-            System.out.println("Aggregated NOTICE created at " + aggregatedNoticeFile.getPath());
+            output(START_INDENT, "Aggregated NOTICE created at " + aggregatedNoticeFile.getPath());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -130,14 +107,12 @@ public class LegalArtifactAggregator {
             File aggregatedLicenseFile = new File(rootDirectory, "LICENSE-aggregated");
             writer = new FileWriter(aggregatedLicenseFile);
             for (Map.Entry<String, LicenseText> license : seenLicenses.entrySet()) {
-                if (verbose) {
-                    System.out.println("Adding license " + license.getKey());
-                }
+                output(START_INDENT, "Adding license " + license.getKey());
                 writer.append(license.getValue().toString());
                 writer.append("\n\n\n");
             }
 
-            System.out.println("Aggregated LICENSE created at " + aggregatedLicenseFile.getPath());
+            output(START_INDENT, "Aggregated LICENSE created at " + aggregatedLicenseFile.getPath());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -147,90 +122,100 @@ public class LegalArtifactAggregator {
     private void outputDiagnostics(boolean forLicenses) {
         final String typeName = forLicenses ? "licenses" : "notices";
 
-        Set seen = forLicenses ? seenLicenses.entrySet() : seenNotices;
+        Set seen = forLicenses ? seenLicenses.entrySet() : projectToNotice.entrySet();
         List<String> duplicated = forLicenses ? duplicatedLicenses : duplicatedNotices;
-        List<String> missing = forLicenses ? missingLicenses : missingNotices;
+        List<String> missingItems = forLicenses ? missingLicenses : missingNotices;
 
-        System.out.println("Found " + seen.size() + " unique " + typeName);
+        output(START_INDENT, "Found " + seen.size() + " unique " + typeName, false, true);
 
         if (!duplicated.isEmpty()) {
             System.out.println("Omitted duplicated " + typeName + " for the following " + duplicated.size() + " JAR files:");
             for (String duplicate : duplicated) {
-                System.out.println("   " + duplicate);
+                output(INDENT_STEP, duplicate, false, true);
             }
         }
 
-        if (!missing.isEmpty()) {
-            System.out.println("Couldn't find any " + typeName + " in the following " + missing.size() +
-                    " JAR files or their sources. Please check them manually:");
-            for (String missingNotice : missing) {
-                System.out.println("   " + missingNotice);
+        if (!missingItems.isEmpty()) {
+            output(START_INDENT, "Couldn't find any " + typeName + " in the following " + missingItems.size() +
+                    " JAR files or their sources. Please check them manually:", false, true);
+            for (String missing : missingItems) {
+                output(INDENT_STEP, missing, false, true);
             }
         }
     }
 
-    private Notice processJarFile(File jarFile, boolean processMavenPom) throws IOException {
+    private void processJarFile(File jarFile, boolean processMavenPom, int level, boolean lookForNotice, boolean lookForLicense) throws IOException {
+        // if we don't need to find either a license or notice, don't process the jar at all
+        if (!lookForLicense && !lookForNotice) {
+            return;
+        }
+
         JarFile realJarFile = new JarFile(jarFile);
         Enumeration<JarEntry> jarEntries = realJarFile.entries();
         String pomFilePath = null;
-        Notice notice = null;
-        LicenseText license = null;
 
+        final String indent = getIndent(level);
+
+        output(indent, "Processing " + jarFile.getName(), false, true);
+        Notice notice;
         Set<JarMetadata> embeddedJars = new HashSet<>(7);
         while (jarEntries.hasMoreElements()) {
             JarEntry curJarEntry = jarEntries.nextElement();
 
             if (!curJarEntry.isDirectory()) {
                 final String fileName = curJarEntry.getName();
-                if (isNotice(fileName, jarFile)) {
+                if (lookForNotice && isNotice(fileName, jarFile)) {
                     InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
                     notice = new Notice(noticeLines);
 
-                    if (!seenNotices.contains(notice)) {
-                        // remember seen notices to avoid duplication
-                        seenNotices.add(notice);
+                    // compute project name
+                    final String jarFileName = getJarFileName(jarFile.getName());
+                    final JarMetadata jarMetadata = getJarMetadataIfMavenArtifact(jarFileName);
+
+                    final String project = jarMetadata != null ? jarMetadata.project : JarMetadata.getDashSeparatedProjectName(jarFileName);
+                    Set<Notice> notices = projectToNotice.get(project);
+                    if (notices == null) {
+                        notices = new HashSet<>(17);
+                        notices.add(notice);
+                        projectToNotice.put(project, notices);
+                    } else if (!notices.contains(notice)) {
+                        output(indent, "Found notice " + fileName);
+                        notices.add(notice);
                     } else {
+                        output(indent, "Duplicated notice");
                         duplicatedNotices.add(jarFile.getPath());
-                        notice = null;
                     }
 
+                    lookForNotice = false;
+
                     IOUtils.closeQuietly(noticeInputStream);
-                } else if (fileName.endsWith("pom.xml")) {
+                } else if (processMavenPom && fileName.endsWith("pom.xml")) {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
-                } else if (isLicense(fileName, jarFile)) {
+                } else if (lookForLicense && isLicense(fileName, jarFile)) {
                     InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> licenseLines = IOUtils.readLines(licenseInputStream);
 
-                    license = new LicenseText(licenseLines);
+                    LicenseText license = new LicenseText(licenseLines);
                     final String licenseName = license.getName();
                     if (seenLicenses.containsKey(licenseName)) {
+                        output(indent, "Duplicated license " + licenseName);
                         duplicatedLicenses.add(jarFile.getPath());
-                        license = null;
                     } else {
+                        output(indent, "Found license " + fileName);
                         seenLicenses.put(licenseName, license);
                     }
+
+                    lookForLicense = false;
 
                     IOUtils.closeQuietly(licenseInputStream);
 
                 } else if (fileName.endsWith(".jar")) {
-                    // check if jar name fits maven artifact scheme
-                    final int lastSlash = fileName.lastIndexOf('/');
-                    final String file = lastSlash > 0 ? fileName.substring(lastSlash + 1) : fileName;
-                    final int endVersion = file.lastIndexOf('.');
-                    // look for beginning of version string if any
-                    int begVersion = -1;
-                    int dash = file.indexOf('-');
-                    while (dash > 0 && dash < endVersion) {
-                        if (Character.isDigit(file.charAt(dash + 1))) {
-                            begVersion = dash + 1;
-                            break;
-                        }
-                        dash = file.indexOf('-', dash + 1);
-                    }
-                    if (begVersion != -1) {
-                        embeddedJars.add(new JarMetadata(file.substring(0, begVersion - 1), file.substring(begVersion, endVersion)));
+                    final JarMetadata jarMetadata = getJarMetadataIfMavenArtifact(getJarFileName(fileName));
+
+                    if (jarMetadata != null) {
+                        embeddedJars.add(jarMetadata);
                     }
                 }
             }
@@ -238,17 +223,69 @@ public class LegalArtifactAggregator {
 
         if (processMavenPom) {
             if (pomFilePath == null) {
-                missingPOMs.add(realJarFile.getName());
+                output(indent, "No POM found");
             } else {
-                final LegalArtifact legalArtifact = processPOM(realJarFile, pomFilePath, notice, license, embeddedJars);
-                notice = legalArtifact.getNotice();
+                processPOM(realJarFile, pomFilePath, lookForNotice, lookForLicense, embeddedJars, level + 1);
             }
         }
 
+        if (lookForLicense || lookForNotice) {
+            if (lookForLicense) {
+                output(indent, "No license found");
+            }
+            if (lookForNotice) {
+                output(indent, "No notice found");
+            }
+
+            if (pomFilePath == null && lookForLicense && lookForNotice) {
+                output(indent, "===>  Couldn't find nor POM, license or notice. Please check manually!", false, true);
+            }
+        }
 
         realJarFile.close();
+    }
 
-        return notice;
+    private String getIndent(int level) {
+        String indent = START_INDENT;
+        int i = level;
+        while (i-- != 0) {
+            indent += INDENT_STEP;
+        }
+        return indent;
+    }
+
+    private JarMetadata getJarMetadataIfMavenArtifact(String file) {
+        // look for beginning of version string if any
+        int begVersion = -1;
+        int dash = file.indexOf('-');
+        while (dash > 0 && dash < file.length()) {
+            if (Character.isDigit(file.charAt(dash + 1))) {
+                begVersion = dash + 1;
+                break;
+            }
+            dash = file.indexOf('-', dash + 1);
+        }
+        return begVersion != -1 ?
+                new JarMetadata(file.substring(0, begVersion - 1), file.substring(begVersion)) :
+                null;
+    }
+
+    private String getJarFileName(String fileName) {
+        final int lastSlash = fileName.lastIndexOf('/');
+        fileName = lastSlash > 0 ? fileName.substring(lastSlash + 1) : fileName;
+        final int endVersion = fileName.lastIndexOf('.');
+        return fileName.substring(0, endVersion);
+    }
+
+    private void output(String indent, String message) {
+        output(indent, message, false, false);
+    }
+
+    private void output(String indent, String message, boolean error, boolean force) {
+        PrintStream out = error ? System.err : System.out;
+        if (force || error || verbose) {
+            out.println(indent + message);
+        }
     }
 
     private boolean isNotice(String fileName, File jarFile) {
@@ -300,22 +337,25 @@ public class LegalArtifactAggregator {
         return isLicense;
     }
 
-    private LegalArtifact processPOM(JarFile realJarFile, String pomFilePath, Notice notice, LicenseText license, Set<JarMetadata> embeddedJarNames) throws IOException {
+    private void processPOM(JarFile realJarFile, String pomFilePath, boolean lookForNotice, boolean lookForLicense, Set<JarMetadata> embeddedJarNames, int level) throws
+            IOException {
+        // if we're not looking for notice or license and don't have embedded jars, don't process at all
+        if (embeddedJarNames.isEmpty() && !lookForNotice && !lookForLicense) {
+            return;
+        }
+
         JarEntry pom = new JarEntry(pomFilePath);
         InputStream pomInputStream = realJarFile.getInputStream(pom);
 
         MavenXpp3Reader reader = new MavenXpp3Reader();
-        LegalArtifact legalArtifact;
         try {
             final Model model = reader.read(pomInputStream);
             final Parent parent = model.getParent();
-            Artifact parentArtifact = null;
             String parentGroupId = null;
             String parentVersion = null;
             if (parent != null) {
                 parentGroupId = parent.getGroupId();
                 parentVersion = parent.getVersion();
-                parentArtifact = new DefaultArtifact(parentGroupId, parent.getArtifactId(), "sources", "jar", parentVersion);
             }
 
             if (!embeddedJarNames.isEmpty()) {
@@ -325,13 +365,12 @@ public class LegalArtifactAggregator {
                     artifactToDep.put(dependency.getArtifactId(), dependency);
                 }
 
-
                 for (JarMetadata jarName : embeddedJarNames) {
                     final Dependency dependency = artifactToDep.get(jarName.name);
                     if (dependency != null) {
-                        File jar = getArtifactFile(new DefaultArtifact(dependency.getGroupId(), dependency.getArtifactId(), "sources", "jar", jarName.version));
+                        File jar = getArtifactFile(new DefaultArtifact(dependency.getGroupId(), dependency.getArtifactId(), null, "jar", jarName.version), level);
                         if (jar != null && jar.exists()) {
-                            processJarFile(jar, true);
+                            processJarFile(jar, true, level, true, true);
                         }
                     }
                 }
@@ -341,42 +380,17 @@ public class LegalArtifactAggregator {
             final String version = model.getVersion() != null ? model.getVersion() : parentVersion;
             final Artifact artifact = new DefaultArtifact(groupId, model.getArtifactId(), "sources", "jar", version);
 
-            legalArtifact = new LegalArtifact(artifact, parentArtifact);
-
-            final String artifactGroup = legalArtifact.getArtifact().getGroupId();
-            SortedSet<LegalArtifact> legalArtifacts = artifacts.get(artifactGroup);
-            if (legalArtifacts == null) {
-                legalArtifacts = new TreeSet<>();
-                artifacts.put(artifactGroup, legalArtifacts);
+            File sourceJar = getArtifactFile(artifact, level);
+            if (sourceJar != null && sourceJar.exists()) {
+                processJarFile(sourceJar, false, level, lookForNotice, lookForLicense);
             }
-            legalArtifacts.add(legalArtifact);
-
         } catch (XmlPullParserException e) {
             throw new IOException(e);
         }
 
-        if (notice == null || license == null) {
-            File sourceJar = getArtifactFile(legalArtifact.getArtifact());
-            if (sourceJar != null && sourceJar.exists()) {
-                notice = processJarFile(sourceJar, false);
-            }
-        }
-
-        legalArtifact.setNotice(notice);
-        legalArtifact.setLicense(license);
-
-        if (notice == null) {
-            missingNotices.add(realJarFile.getName());
-        }
-
-        if(license == null) {
-            missingLicenses.add(realJarFile.getName());
-        }
-
-        return legalArtifact;
     }
 
-    private File getArtifactFile(Artifact artifact) {
+    private File getArtifactFile(Artifact artifact, int level) {
         ArtifactRequest request = new ArtifactRequest();
         request.setArtifact(artifact);
         request.setRepositories(remoteRepositories);
@@ -384,10 +398,9 @@ public class LegalArtifactAggregator {
         ArtifactResult artifactResult;
         try {
             artifactResult = repositorySystem.resolveArtifact(repositorySystemSession, request);
-            File artifactFile = artifactResult.getArtifact().getFile();
-            return artifactFile;
+            return artifactResult.getArtifact().getFile();
         } catch (ArtifactResolutionException e) {
-            System.err.println("Couldn't find artifact " + artifact + " : " + e.getMessage());
+            output(getIndent(level), "Couldn't find artifact " + artifact + " : " + e.getMessage(), true, true);
         }
         return null;
     }
@@ -396,10 +409,42 @@ public class LegalArtifactAggregator {
     private static class JarMetadata {
         final String name;
         final String version;
+        final String project;
 
-        public JarMetadata(String name, String version) {
+        private JarMetadata(String name, String version) {
             this.name = name;
             this.version = version;
+
+            // compute project name heuristically
+            String project = name;
+            final int dot = name.indexOf('.');
+            if (dot > 0) {
+                // look for tld.hostname.project pattern
+                boolean standard = false;
+                int host = name.indexOf('.', dot + 1);
+                if (host > dot) {
+                    int proj = name.indexOf('.', host + 1);
+                    project = name.substring(0, proj);
+                    standard = true;
+                }
+
+                if (!standard) {
+                    project = getDashSeparatedProjectName(name);
+                }
+            } else {
+                // assume project is project-subproject-blah...
+                project = getDashSeparatedProjectName(name);
+            }
+            this.project = project;
+        }
+
+        static String getDashSeparatedProjectName(String name) {
+            final int dash = name.indexOf('-');
+            if (dash > 0) {
+                return name.substring(0, dash);
+            } else {
+                return name;
+            }
         }
 
         @Override
