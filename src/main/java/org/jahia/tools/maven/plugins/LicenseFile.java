@@ -76,13 +76,13 @@ import java.util.List;
 /**
  * @author Christophe Laprun
  */
-class License {
+class LicenseFile {
     private String text;
     private int hash;
     private List<KnownLicense> knownLicenses;
     private String additionalLicenseText;
 
-    License(List<String> licenseLines) {
+    LicenseFile(List<String> licenseLines) {
         StringBuilder stringBuilder = new StringBuilder(4096);
         for (String licenseLine : licenseLines) {
             stringBuilder.append(licenseLine).append("\n");
@@ -96,7 +96,7 @@ class License {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
-        License that = (License) o;
+        LicenseFile that = (LicenseFile) o;
 
         return hash == that.hash;
 

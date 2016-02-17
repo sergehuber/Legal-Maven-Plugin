@@ -30,10 +30,6 @@ import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.Unmarshaller;
 import java.io.*;
 import java.net.URL;
 import java.security.KeyManagementException;
@@ -63,8 +59,7 @@ class LegalArtifactAggregator {
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
 
-    private final Map<License, List<String>> licensesFound = new HashMap<>(101);
-    private final List<String> duplicatedLicenses = new LinkedList<>();
+    private final Map<KnownLicense, List<String>> knownLicensesFound = new HashMap<>();
     private final List<String> missingLicenses = new LinkedList<>();
 
 
@@ -155,14 +150,14 @@ class LegalArtifactAggregator {
         try {
             File aggregatedLicenseFile = new File(rootDirectory, "LICENSE-aggregated");
             writer = new FileWriter(aggregatedLicenseFile);
-            for (Map.Entry<License, List<String>> license : licensesFound.entrySet()) {
-                output(START_INDENT, "Adding license " + license.getKey());
-                List<String> locations = license.getValue();
+            for (Map.Entry<KnownLicense, List<String>> foundKnownLicenseEntry : knownLicensesFound.entrySet()) {
+                output(START_INDENT, "Adding license " + foundKnownLicenseEntry.getKey().getName());
+                List<String> locations = foundKnownLicenseEntry.getValue();
                 writer.append("License for:\n");
                 for (String location : locations) {
                     writer.append("  " + location + "\n");
                 }
-                writer.append(license.getKey().toString());
+                writer.append(foundKnownLicenseEntry.getKey().getTextVariants().get(0));
                 writer.append("\n\n\n");
             }
 
@@ -173,17 +168,6 @@ class LegalArtifactAggregator {
         IOUtils.closeQuietly(writer);
 
         if (updateKnownLicenses) {
-            for (License license : licensesFound.keySet()) {
-                if (license.getKnownLicenses() == null || license.getKnownLicenses().size() == 0) {
-                    KnownLicense knownLicense = new KnownLicense();
-                    knownLicense.setName("Unknown");
-                    List<String> textVariants = new ArrayList<>();
-                    textVariants.add(Pattern.quote(license.getText()));
-                    knownLicense.setTextVariants(textVariants);
-                    knownLicense.setViral(license.getText().toLowerCase().contains("gpl"));
-                    knownLicenses.licenses.add(knownLicense);
-                }
-            }
             File knownLicensesFile = new File(rootDirectory, "known-licenses.json");
             try {
                 mapper.writeValue(knownLicensesFile, knownLicenses);
@@ -196,8 +180,8 @@ class LegalArtifactAggregator {
     private void outputDiagnostics(boolean forLicenses) {
         final String typeName = forLicenses ? "licenses" : "notices";
 
-        Set seen = forLicenses ? licensesFound.entrySet() : projectToNotice.entrySet();
-        List<String> duplicated = forLicenses ? duplicatedLicenses : duplicatedNotices;
+        Set seen = projectToNotice.entrySet();
+        List<String> duplicated = duplicatedNotices;
         List<String> missingItems = forLicenses ? missingLicenses : missingNotices;
 
         output(START_INDENT, "Found " + seen.size() + " unique " + typeName, false, true);
@@ -272,19 +256,33 @@ class LegalArtifactAggregator {
                     InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> licenseLines = IOUtils.readLines(licenseInputStream);
 
-                    License license = new License(licenseLines);
-                    findKnownLicenses(license);
-                    List<String> locations = licensesFound.get(license);
-                    if (locations != null) {
-                        output(indent, "Licenses found in " + fileName);
-                        locations.add(jarFile.getPath());
-                        licensesFound.put(license, locations);
-                        duplicatedLicenses.add(jarFile.getPath());
-                    } else {
-                        locations = new ArrayList<String>();
-                        locations.add(jarFile.getPath());
-                        output(indent, "Found new licenses in " + fileName);
-                        licensesFound.put(license, locations);
+                    LicenseFile licenseFile = new LicenseFile(licenseLines);
+
+                    findKnownLicenses(licenseFile);
+
+                    if (StringUtils.isNotBlank(licenseFile.getAdditionalLicenseText())) {
+                        KnownLicense knownLicense = new KnownLicense();
+                        knownLicense.setName("Additional license terms from " + jarFile);
+                        List<String> textVariants = new ArrayList<>();
+                        textVariants.add(Pattern.quote(licenseFile.getAdditionalLicenseText()));
+                        knownLicense.setTextVariants(textVariants);
+                        knownLicense.setViral(licenseFile.getText().toLowerCase().contains("gpl"));
+                        knownLicenses.licenses.add(knownLicense);
+                        licenseFile.getKnownLicenses().add(knownLicense);
+                    }
+
+                    for (KnownLicense knownLicense : licenseFile.getKnownLicenses()) {
+                        List<String> locations = knownLicensesFound.get(knownLicense);
+                        if (locations != null) {
+                            if (!locations.contains(jarFile.getPath())) {
+                                locations.add(jarFile.getPath());
+                            }
+                            knownLicensesFound.put(knownLicense, locations);
+                        } else {
+                            locations = new ArrayList<String>();
+                            locations.add(jarFile.getPath());
+                            knownLicensesFound.put(knownLicense, locations);
+                        }
                     }
 
                     lookForLicense = false;
@@ -677,15 +675,15 @@ class LegalArtifactAggregator {
      * Find the closest matching license using a LevenshteinDistance edit distance algorithm because the two license
      * texts. If the edit distance is larger than the EDIT_DISTANCE_THRESHOLD it is possible that no license matches,
      * which is what we want if we are actually not matching a real license.
-     * @param license the license we want to match against the known licenses.
+     * @param licenseFile the license we want to match against the known licenses.
      * @return
      */
-    public KnownLicense findClosestMatchingKnownLicense(License license) {
+    public KnownLicense findClosestMatchingKnownLicense(LicenseFile licenseFile) {
         KnownLicense closestMatchingKnownLicense = null;
         int smallestEditDistance = Integer.MAX_VALUE;
         for (KnownLicense knownLicense : knownLicenses.licenses) {
             for (String textVariant : knownLicense.getTextVariants()) {
-                int editDistance = StringUtils.getLevenshteinDistance(textVariant, license.getText(), EDIT_DISTANCE_THRESHOLD);
+                int editDistance = StringUtils.getLevenshteinDistance(textVariant, licenseFile.getText(), EDIT_DISTANCE_THRESHOLD);
                 if (editDistance >= 0 && editDistance < smallestEditDistance) {
                     smallestEditDistance = editDistance;
                     closestMatchingKnownLicense = knownLicense;
@@ -695,9 +693,9 @@ class LegalArtifactAggregator {
         return closestMatchingKnownLicense;
     }
 
-    public void findKnownLicenses(License license) {
+    public void findKnownLicenses(LicenseFile licenseFile) {
         List<KnownLicense> foundLicenses = new ArrayList<>();
-        String licenseText = license.getText();
+        String licenseText = licenseFile.getText();
         boolean licenseFound = false;
         if (knownLicenses.licenses == null) {
             return;
@@ -718,7 +716,12 @@ class LegalArtifactAggregator {
                 }
             }
         } while (licenseFound);
-        license.setKnownLicenses(foundLicenses);
-        license.setAdditionalLicenseText(licenseText);
+        if (foundLicenses.size() == 0) {
+            System.out.println("No known license found for license file " + licenseFile);
+        }
+        licenseFile.setKnownLicenses(foundLicenses);
+        if (StringUtils.isNotBlank(licenseText)) {
+            licenseFile.setAdditionalLicenseText(licenseText);
+        }
     }
 }
