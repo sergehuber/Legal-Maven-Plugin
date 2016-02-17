@@ -76,38 +76,19 @@ import java.util.List;
 /**
  * @author Christophe Laprun
  */
-class LicenseText {
-    private final String license;
-    private final int hash;
-    private final String name;
+class License {
+    private String text;
+    private int hash;
+    private List<KnownLicense> knownLicenses;
+    private String additionalLicenseText;
 
-    LicenseText(List<String> licenseLines) {
+    License(List<String> licenseLines) {
         StringBuilder stringBuilder = new StringBuilder(4096);
-        name = extractReasonableName(licenseLines);
         for (String licenseLine : licenseLines) {
             stringBuilder.append(licenseLine).append("\n");
         }
-        license = stringBuilder.toString();
-        hash = name.hashCode();
-    }
-
-    private String extractReasonableName(List<String> licenseLines) {
-        // remove all blank lines
-        while(licenseLines.get(0).trim().isEmpty()) {
-            licenseLines.remove(0);
-        }
-
-        // ignore empty lines and lines containing / to account for licenses containing svn versions or references to web site (W3C for example).
-        int index = 0;
-        for (String licenseLine : licenseLines) {
-            licenseLine = licenseLine.trim();
-            if(licenseLine.isEmpty() || licenseLine.contains("/")) {
-                index++;
-                continue;
-            }
-            break;
-        }
-        return licenseLines.get(index).trim();
+        text = stringBuilder.toString();
+        hash = text.hashCode();
     }
 
     @Override
@@ -115,7 +96,7 @@ class LicenseText {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
-        LicenseText that = (LicenseText) o;
+        License that = (License) o;
 
         return hash == that.hash;
 
@@ -128,10 +109,26 @@ class LicenseText {
 
     @Override
     public String toString() {
-        return license;
+        return text;
     }
 
-    String getName() {
-        return name;
+    public String getText() {
+        return text;
+    }
+
+    public List<KnownLicense> getKnownLicenses() {
+        return knownLicenses;
+    }
+
+    public void setKnownLicenses(List<KnownLicense> knownLicenses) {
+        this.knownLicenses = knownLicenses;
+    }
+
+    public String getAdditionalLicenseText() {
+        return additionalLicenseText;
+    }
+
+    public void setAdditionalLicenseText(String additionalLicenseText) {
+        this.additionalLicenseText = additionalLicenseText;
     }
 }

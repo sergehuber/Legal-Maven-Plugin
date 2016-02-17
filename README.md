@@ -38,7 +38,7 @@ To run the plugin directly, just launch `mvn legal:aggregate-legal-artifacts`
 
 Launch with :
 
-    mvn -P clean install
+    mvn -P debug clean install
 
 And connect a debugger on port 8000 (integration tests will block until debugger is connected)
 
