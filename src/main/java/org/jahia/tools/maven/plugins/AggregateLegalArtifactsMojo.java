@@ -128,26 +128,5 @@ public class AggregateLegalArtifactsMojo extends AbstractMojo
         LegalArtifactAggregator legalArtifactAggregator = new LegalArtifactAggregator(scanDirectory, f, repoSystem, repoSession, projectRepos, scmManager, verbose, outputDiagnostics);
         legalArtifactAggregator.execute();
 
-        //get data from project
-        if (project.getScm() != null) {
-            String developerConnection = project.getScm().getDeveloperConnection();
-
-            File wcDir = new File(project.getBuild().getDirectory(), "checkout");
-            if (!wcDir.exists()) {
-                wcDir.mkdirs();
-            }
-            ScmProvider scmProvider;
-            try {
-                scmProvider = scmManager.getProviderByUrl(developerConnection);
-                ScmRepository scmRepository = scmManager.makeScmRepository(developerConnection);
-                CheckOutScmResult scmResult = scmProvider.checkOut(scmRepository, new ScmFileSet(wcDir));
-                if (!scmResult.isSuccess()) {
-                    getLog().error(String.format("Fail to checkout artifact %s to %s", project.getArtifact(), wcDir));
-                }
-            } catch (Exception e) {
-                throw new MojoExecutionException("Fail to checkout.", e);
-            }
-        }
-
     }
 }
