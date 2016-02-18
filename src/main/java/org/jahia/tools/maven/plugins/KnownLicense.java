@@ -1,12 +1,8 @@
 package org.jahia.tools.maven.plugins;
 
-import javax.xml.bind.annotation.XmlElement;
-import javax.xml.bind.annotation.XmlElementWrapper;
 import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.XmlTransient;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * Created by loom on 16.02.16.
@@ -14,18 +10,26 @@ import java.util.regex.Pattern;
 @XmlRootElement(name="license")
 public class KnownLicense {
 
-    private String name;
+    private String id;
 
-    private List<String> aliases;
+    private String name;
 
     private String version;
     private boolean viral;
 
-    private List<String> textVariants;
+    private List<TextVariant> textVariants = new ArrayList<>();
 
-    private List<Pattern> textVariantPatterns = new ArrayList<>();
+    private String textToUse;
 
     KnownLicense() {
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getName() {
@@ -34,16 +38,6 @@ public class KnownLicense {
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    @XmlElementWrapper(name="aliases")
-    @XmlElement(name="alias")
-    public List<String> getAliases() {
-        return aliases;
-    }
-
-    public void setAliases(List<String> aliases) {
-        this.aliases = aliases;
     }
 
     public String getVersion() {
@@ -62,22 +56,19 @@ public class KnownLicense {
         this.viral = viral;
     }
 
-    public List<String> getTextVariants() {
+    public List<TextVariant> getTextVariants() {
         return textVariants;
     }
 
-    public void setTextVariants(List<String> textVariants) {
+    public void setTextVariants(List<TextVariant> textVariants) {
         this.textVariants = textVariants;
-        if (textVariants != null && textVariants.size() > 0) {
-            textVariantPatterns.clear();
-            for (String textVariant : textVariants) {
-                textVariantPatterns.add(Pattern.compile(textVariant));
-            }
-        }
     }
 
-    @XmlTransient
-    public List<Pattern> getTextVariantPatterns() {
-        return textVariantPatterns;
+    public String getTextToUse() {
+        return textToUse;
+    }
+
+    public void setTextToUse(String textToUse) {
+        this.textToUse = textToUse;
     }
 }

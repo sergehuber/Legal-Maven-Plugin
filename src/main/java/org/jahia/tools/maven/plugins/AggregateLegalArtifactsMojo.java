@@ -92,6 +92,13 @@ public class AggregateLegalArtifactsMojo extends AbstractMojo
      * @parameter property="project.build.directory"
      * @required
      */
+    private File scanDirectory;
+
+    /**
+     * Location of the file.
+     * @parameter property="project.build.directory"
+     * @required
+     */
     private File outputDirectory;
 
     /**
@@ -118,7 +125,7 @@ public class AggregateLegalArtifactsMojo extends AbstractMojo
             f.mkdirs();
         }
 
-        LegalArtifactAggregator legalArtifactAggregator = new LegalArtifactAggregator(f, repoSystem, repoSession, projectRepos, verbose, outputDiagnostics);
+        LegalArtifactAggregator legalArtifactAggregator = new LegalArtifactAggregator(scanDirectory, f, repoSystem, repoSession, projectRepos, scmManager, verbose, outputDiagnostics);
         legalArtifactAggregator.execute();
 
         //get data from project

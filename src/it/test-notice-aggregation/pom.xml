@@ -61,7 +61,7 @@
                                     <version>${unomi.version}</version>
                                     <type>zip</type>
                                     <overWrite>true</overWrite>
-                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                    <outputDirectory>${project.build.directory}/unpacked</outputDirectory>
                                 </artifactItem>
                             </artifactItems>
                         </configuration>
@@ -75,6 +75,8 @@
                 <version>@pom.version@</version>
                 <configuration>
                     <verbose>true</verbose>
+                    <scanDirectory>${project.build.directory}/unpacked</scanDirectory>
+                    <outputDirectory>${project.build.directory}</outputDirectory>
                 </configuration>
                 <executions>
                     <execution>

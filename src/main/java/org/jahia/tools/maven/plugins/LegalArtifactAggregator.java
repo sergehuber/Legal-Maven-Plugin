@@ -11,6 +11,14 @@ import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
+import org.apache.maven.scm.ScmException;
+import org.apache.maven.scm.ScmFileSet;
+import org.apache.maven.scm.command.checkout.CheckOutScmResult;
+import org.apache.maven.scm.manager.NoSuchScmProviderException;
+import org.apache.maven.scm.manager.ScmManager;
+import org.apache.maven.scm.provider.ScmProvider;
+import org.apache.maven.scm.repository.ScmRepository;
+import org.apache.maven.scm.repository.ScmRepositoryException;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -49,7 +57,9 @@ class LegalArtifactAggregator {
     private static final String START_INDENT = "";
     private static final String INDENT_STEP = "  ";
     private static final int EDIT_DISTANCE_THRESHOLD = 1000;
-    private final File rootDirectory;
+
+    private final File scanDirectory;
+    private final File outputDirectory;
 
     private static Map<String,Client> clients = new TreeMap<String,Client>();
     public static final String MAVEN_SEARCH_HOST_URL = "http://search.maven.org";
@@ -58,6 +68,7 @@ class LegalArtifactAggregator {
     private final RepositorySystem repositorySystem;
     private final RepositorySystemSession repositorySystemSession;
     private final List<RemoteRepository> remoteRepositories;
+    private final ScmManager scmManager;
 
     private final Map<KnownLicense, List<String>> knownLicensesFound = new HashMap<>();
     private final List<String> missingLicenses = new LinkedList<>();
@@ -76,12 +87,14 @@ class LegalArtifactAggregator {
     KnownLicenses knownLicenses = null;
     ObjectMapper mapper = new ObjectMapper();
 
-    LegalArtifactAggregator(File rootDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories,
+    LegalArtifactAggregator(File scanDirectory, File outputDirectory, RepositorySystem repositorySystem, RepositorySystemSession repositorySystemSession, List<RemoteRepository> remoteRepositories, ScmManager scmManager,
                             boolean verbose, boolean outputDiagnostics) {
-        this.rootDirectory = rootDirectory;
+        this.scanDirectory = scanDirectory;
+        this.outputDirectory = outputDirectory;
         this.repositorySystem = repositorySystem;
         this.repositorySystemSession = repositorySystemSession;
         this.remoteRepositories = remoteRepositories;
+        this.scmManager = scmManager;
         this.verbose = verbose;
         this.outputDiagnostics = outputDiagnostics;
         forbiddenKeyWords.add("gpl");
@@ -91,18 +104,11 @@ class LegalArtifactAggregator {
         mapper.registerModule(jaxbAnnotationModule);
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
-        URL knownLicensesJSONURL = this.getClass().getClassLoader().getResource("known-licenses.json");
-        if (knownLicensesJSONURL != null) {
-            try {
-                knownLicenses = mapper.readValue(knownLicensesJSONURL, KnownLicenses.class);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        loadKnownLicenses();
     }
 
     void execute() {
-        Collection<File> jarFiles = FileUtils.listFiles(rootDirectory, new String[]{"jar"}, true);
+        Collection<File> jarFiles = FileUtils.listFiles(scanDirectory, new String[]{"jar"}, true);
         for (File jarFile : jarFiles) {
             try {
                 processJarFile(jarFile, true, 0, true, true);
@@ -134,7 +140,7 @@ class LegalArtifactAggregator {
 
         FileWriter writer = null;
         try {
-            File aggregatedNoticeFile = new File(rootDirectory, "NOTICE-aggregated");
+            File aggregatedNoticeFile = new File(outputDirectory, "NOTICE-aggregated");
             writer = new FileWriter(aggregatedNoticeFile);
             for (String noticeLine : allNoticeLines) {
                 writer.append(noticeLine);
@@ -148,7 +154,7 @@ class LegalArtifactAggregator {
         IOUtils.closeQuietly(writer);
 
         try {
-            File aggregatedLicenseFile = new File(rootDirectory, "LICENSE-aggregated");
+            File aggregatedLicenseFile = new File(outputDirectory, "LICENSE-aggregated");
             writer = new FileWriter(aggregatedLicenseFile);
             for (Map.Entry<KnownLicense, List<String>> foundKnownLicenseEntry : knownLicensesFound.entrySet()) {
                 output(START_INDENT, "Adding license " + foundKnownLicenseEntry.getKey().getName());
@@ -157,7 +163,7 @@ class LegalArtifactAggregator {
                 for (String location : locations) {
                     writer.append("  " + location + "\n");
                 }
-                writer.append(foundKnownLicenseEntry.getKey().getTextVariants().get(0));
+                writer.append(foundKnownLicenseEntry.getKey().getTextToUse());
                 writer.append("\n\n\n");
             }
 
@@ -168,12 +174,94 @@ class LegalArtifactAggregator {
         IOUtils.closeQuietly(writer);
 
         if (updateKnownLicenses) {
-            File knownLicensesFile = new File(rootDirectory, "known-licenses.json");
+            saveKnownLicenses();
+        }
+    }
+
+    private void loadKnownLicenses() {
+        URL knownLicensesJSONURL = this.getClass().getClassLoader().getResource("known-licenses.json");
+        if (knownLicensesJSONURL != null) {
             try {
-                mapper.writeValue(knownLicensesFile, knownLicenses);
+                knownLicenses = mapper.readValue(knownLicensesJSONURL, KnownLicenses.class);
             } catch (IOException e) {
                 e.printStackTrace();
             }
+        }
+        for (KnownLicense knownLicense : knownLicenses.getLicenses().values()) {
+            for (TextVariant textVariant : knownLicense.getTextVariants()) {
+                URL textVariantURL = this.getClass().getClassLoader().getResource("known-licenses/" + knownLicense.getId() + "/variants/" + textVariant.getId() + ".txt");
+                if (textVariantURL != null) {
+                    try {
+                        String textVariantText = IOUtils.toString(textVariantURL);
+                        textVariant.setText(textVariantText);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+            knownLicense.setTextVariants(knownLicense.getTextVariants());
+            if (knownLicense.getTextToUse() != null && knownLicense.getTextToUse().startsWith("classpath:")) {
+                String textToUseLocation = knownLicense.getTextToUse().substring("classpath:".length());
+                URL textToUseURL = this.getClass().getClassLoader().getResource("known-licenses/" + knownLicense.getId() + "/" + textToUseLocation.substring("classpath:".length()));
+                if (textToUseURL != null) {
+                    try {
+                        String realTextToUse = IOUtils.toString(textToUseURL);
+                        knownLicense.setTextToUse(realTextToUse);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+
+    private void saveKnownLicenses() {
+
+        File knownLicensesDirectory = new File(outputDirectory, "known-licenses");
+        knownLicensesDirectory.mkdirs();
+        for (KnownLicense knownLicense : knownLicenses.getLicenses().values()) {
+            File knownLicenseDir = new File(knownLicensesDirectory, knownLicense.getId());
+            if (!knownLicenseDir.exists()) {
+                knownLicenseDir.mkdirs();
+            }
+            File knownLicenseVariantsDir = new File(knownLicenseDir, "variants");
+            if (!knownLicenseVariantsDir.exists()) {
+                knownLicenseVariantsDir.mkdirs();
+            }
+            for (TextVariant textVariant : knownLicense.getTextVariants()) {
+                String variantFileName = "variant-" + textVariant.getId() + ".txt";
+                File variantFile = new File(knownLicenseVariantsDir, variantFileName);
+                FileWriter variantFileWriter = null;
+                try {
+                    variantFileWriter = new FileWriter(variantFile);
+                    IOUtils.write(textVariant.getText(), variantFileWriter);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    IOUtils.closeQuietly(variantFileWriter);
+                }
+            }
+            if (knownLicense.getTextToUse() != null) {
+                String textToUseFileName = "LICENSE.txt";
+                File textToUseFile = new File(knownLicenseDir, textToUseFileName);
+                FileWriter textToUseFileWriter = null;
+                try {
+                    textToUseFileWriter = new FileWriter(textToUseFile);
+                    IOUtils.write(knownLicense.getTextToUse(), textToUseFileWriter);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    IOUtils.closeQuietly(textToUseFileWriter);
+                }
+                knownLicense.setTextToUse("classpath:" + textToUseFileName);
+            }
+        }
+
+        File knownLicensesFile = new File(outputDirectory, "known-licenses.json");
+        try {
+            mapper.writeValue(knownLicensesFile, knownLicenses);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -262,12 +350,18 @@ class LegalArtifactAggregator {
 
                     if (StringUtils.isNotBlank(licenseFile.getAdditionalLicenseText())) {
                         KnownLicense knownLicense = new KnownLicense();
+                        knownLicense.setId(jarFile.getName() + "-additional-terms");
                         knownLicense.setName("Additional license terms from " + jarFile);
-                        List<String> textVariants = new ArrayList<>();
-                        textVariants.add(Pattern.quote(licenseFile.getAdditionalLicenseText()));
+                        List<TextVariant> textVariants = new ArrayList<>();
+                        TextVariant textVariant = new TextVariant();
+                        textVariant.setId("default");
+                        textVariant.setDefaultVariant(true);
+                        textVariant.setText(Pattern.quote(licenseFile.getAdditionalLicenseText()));
+                        textVariants.add(textVariant);
                         knownLicense.setTextVariants(textVariants);
+                        knownLicense.setTextToUse(licenseFile.getAdditionalLicenseText());
                         knownLicense.setViral(licenseFile.getText().toLowerCase().contains("gpl"));
-                        knownLicenses.licenses.add(knownLicense);
+                        knownLicenses.getLicenses().put(knownLicense.getId(), knownLicense);
                         licenseFile.getKnownLicenses().add(knownLicense);
                     }
 
@@ -459,6 +553,26 @@ class LegalArtifactAggregator {
                 }
                 if (scmConnection == null) {
                     // @todo let's try to resolve in the parent hierarcy
+                }
+            }
+            if (scmManager != null && scmConnection != null) {
+                ScmProvider scmProvider;
+                File checkoutDir = new File(outputDirectory, "source-checkouts");
+                checkoutDir.mkdirs();
+                File wcDir = new File(checkoutDir, model.getArtifactId());
+                wcDir.mkdirs();
+                try {
+                    scmProvider = scmManager.getProviderByUrl(scmConnection);
+                    ScmRepository scmRepository = scmManager.makeScmRepository(scmConnection);
+                    CheckOutScmResult scmResult = scmProvider.checkOut(scmRepository, new ScmFileSet(wcDir));
+                    if (!scmResult.isSuccess()) {
+                    }
+                } catch (ScmRepositoryException e) {
+                    e.printStackTrace();
+                } catch (NoSuchScmProviderException e) {
+                    e.printStackTrace();
+                } catch (ScmException e) {
+                    e.printStackTrace();
                 }
             }
 
@@ -681,9 +795,9 @@ class LegalArtifactAggregator {
     public KnownLicense findClosestMatchingKnownLicense(LicenseFile licenseFile) {
         KnownLicense closestMatchingKnownLicense = null;
         int smallestEditDistance = Integer.MAX_VALUE;
-        for (KnownLicense knownLicense : knownLicenses.licenses) {
-            for (String textVariant : knownLicense.getTextVariants()) {
-                int editDistance = StringUtils.getLevenshteinDistance(textVariant, licenseFile.getText(), EDIT_DISTANCE_THRESHOLD);
+        for (KnownLicense knownLicense : knownLicenses.getLicenses().values()) {
+            for (TextVariant textVariant : knownLicense.getTextVariants()) {
+                int editDistance = StringUtils.getLevenshteinDistance(textVariant.getText(), licenseFile.getText(), EDIT_DISTANCE_THRESHOLD);
                 if (editDistance >= 0 && editDistance < smallestEditDistance) {
                     smallestEditDistance = editDistance;
                     closestMatchingKnownLicense = knownLicense;
@@ -697,14 +811,14 @@ class LegalArtifactAggregator {
         List<KnownLicense> foundLicenses = new ArrayList<>();
         String licenseText = licenseFile.getText();
         boolean licenseFound = false;
-        if (knownLicenses.licenses == null) {
+        if (knownLicenses.getLicenses() == null) {
             return;
         }
         do {
             licenseFound = false;
-            for (KnownLicense knownLicense : knownLicenses.licenses) {
-                for (Pattern textVariantPattern : knownLicense.getTextVariantPatterns()) {
-                    Matcher textVariantMatcher = textVariantPattern.matcher(licenseText);
+            for (KnownLicense knownLicense : knownLicenses.getLicenses().values()) {
+                for (TextVariant textVariant : knownLicense.getTextVariants()) {
+                    Matcher textVariantMatcher = textVariant.getCompiledTextPattern().matcher(licenseText);
                     if (textVariantMatcher.find()) {
                         foundLicenses.add(knownLicense);
                         licenseText = licenseText.substring(textVariantMatcher.end());

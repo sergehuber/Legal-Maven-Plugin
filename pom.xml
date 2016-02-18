@@ -12,8 +12,8 @@
     </properties>
 
     <name>Legal Maven plugin</name>
-    <description>A little Maven plugin to help build Apache-compliant legal files (NOTICE)</description>
-    <url>http://maven.apache.org</url>
+    <description>A little Maven plugin to help build Apache-compliant legal files (LICENSE &amp; NOTICE)</description>
+    <url>https://github.com/sergehuber/Legal-Maven-Plugin</url>
 
     <scm>
         <url>https://github.com/sergehuber/Legal-Maven-Plugin</url>
