@@ -92,11 +92,58 @@
       ],
       "textToUse" : "classpath:LICENSE.txt"
     },
-    "bsd" : {
+    "bsd-3clause" : {
       "id" : "bsd-3clause",
       "name" : "BSD Software license",
       "aliases" : [ "BSD licence", "The BSD License", "BSD" ],
       "version" : "3-clause",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "mit" : {
+      "id" : "mit",
+      "name" : "MIT License",
+      "aliases" : [ ],
+      "version" : "1.0",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "epl" : {
+      "id" : "epl",
+      "name" : "Eclipse Public License",
+      "aliases" : [
+        "Eclipse Public License - Version 1.0"
+      ],
+      "version" : "1.0",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "CDDL-GPLv2" : {
+      "id" : "CDDL-GPLv2",
+      "name" : "CDDL + GPLv2",
+      "aliases" : [
+        "GPLv2+CE",
+        "Dual license consisting of the CDDL v1.1 and GPL v2"
+      ],
+      "version" : "1.0",
       "viral" : false,
       "textVariants" : [
         {
