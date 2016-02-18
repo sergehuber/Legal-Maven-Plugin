@@ -3,7 +3,15 @@
     "asl-v2" : {
       "id" : "asl-v2",
       "name" : "Apache Software License V2",
-      "aliases" : [ "ASL, version 2", "Apache License, Version 2.0", "Apache License 2.0" ],
+      "aliases" : [
+        "ASL, version 2",
+        "Apache License, Version 2.0",
+        "Apache License 2.0",
+        "The Apache Software License, Version 2.0",
+        "Apache Software Licenses",
+        "Apache Software License - Version 2.0",
+        "ALv2"
+      ],
       "version" : "2.0",
       "viral" : false,
       "textVariants" : [
@@ -60,6 +68,7 @@
     "cddl-v1" : {
       "id" : "cddl-v1",
       "name" : "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.0",
+      "aliases" : [ "CDDL" ],
       "version" : "1.0",
       "viral" : false,
       "textVariants" : [
@@ -86,7 +95,7 @@
     "bsd" : {
       "id" : "bsd-3clause",
       "name" : "BSD Software license",
-      "aliases" : [ "BSD licence", "The BSD License"],
+      "aliases" : [ "BSD licence", "The BSD License", "BSD" ],
       "version" : "3-clause",
       "viral" : false,
       "textVariants" : [

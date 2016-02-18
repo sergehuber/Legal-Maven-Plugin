@@ -321,7 +321,7 @@ class LegalArtifactAggregator {
 
         final String indent = getIndent(level);
 
-        output(indent, "Processing " + jarFile.getName(), false, true);
+        output(indent, "Processing JAR " + jarFile.getPath() + "...", false, true);
         Notice notice;
         Set<JarMetadata> embeddedJars = new HashSet<>(7);
         while (jarEntries.hasMoreElements()) {
@@ -330,6 +330,9 @@ class LegalArtifactAggregator {
             if (!curJarEntry.isDirectory()) {
                 final String fileName = curJarEntry.getName();
                 if (lookForNotice && isNotice(fileName, jarFile)) {
+
+                    output(indent, "Processing notice found in " + curJarEntry + "...");
+
                     InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
                     notice = new Notice(noticeLines);
@@ -343,13 +346,13 @@ class LegalArtifactAggregator {
                     if (notices == null) {
                         notices = new HashSet<>(17);
                         notices.add(notice);
-                        output(indent, "Found first notice " + fileName);
+                        output(indent, "Found first notice " + curJarEntry);
                         projectToNotice.put(project, notices);
                     } else if (!notices.contains(notice)) {
-                        output(indent, "Found additional notice " + fileName);
+                        output(indent, "Found additional notice " + curJarEntry);
                         notices.add(notice);
                     } else {
-                        output(indent, "Duplicated notice");
+                        output(indent, "Duplicated notice in " + curJarEntry);
                         duplicatedNotices.add(jarFile.getPath());
                     }
 
@@ -360,6 +363,8 @@ class LegalArtifactAggregator {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
                 } else if (lookForLicense && isLicense(fileName, jarFile)) {
+
+                    output(indent, "Processing license found in " + curJarEntry + "...");
                     InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
                     List<String> licenseLines = IOUtils.readLines(licenseInputStream);
 
@@ -425,18 +430,19 @@ class LegalArtifactAggregator {
 
         if (processMavenPom) {
             if (pomFilePath == null) {
-                output(indent, "No POM found");
+                output(indent, "No POM found in " + jarFile.getPath());
             } else {
+                output(indent, "Processing POM found at " + pomFilePath + " in " + jarFile.getPath() + "...");
                 processJarPOM(realJarFile, pomFilePath, lookForNotice, lookForLicense, embeddedJars, level + 1);
             }
         }
 
         if (lookForLicense || lookForNotice) {
             if (lookForLicense) {
-                output(indent, "No license found");
+                output(indent, "No license found in " + jarFile.getPath());
             }
             if (lookForNotice) {
-                output(indent, "No notice found");
+                output(indent, "No notice found in " + jarFile.getPath());
             }
 
             if (pomFilePath == null && lookForLicense && lookForNotice) {
@@ -458,6 +464,7 @@ class LegalArtifactAggregator {
                             final Artifact artifact = new DefaultArtifact(resolvedArtifact.getGroupId(), resolvedArtifact.getArtifactId(), null, "pom", resolvedArtifact.getVersion());
                             File artifactPom = getArtifactFile(artifact, level);
                             if (artifactPom != null && artifactPom.exists()) {
+                                output(indent, "Processing POM for " + artifact + "...");
                                 processPOM(lookForNotice, lookForLicense, embeddedJars, level + 1, new FileInputStream(artifactPom), false);
                             }
                         }
@@ -471,6 +478,8 @@ class LegalArtifactAggregator {
         }
 
         realJarFile.close();
+        output(indent, "Done processing JAR " + jarFile.getPath() + ".", false, true);
+
     }
 
     private String getIndent(int level) {
@@ -565,6 +574,7 @@ class LegalArtifactAggregator {
 
     private void processPOM(boolean lookForNotice, boolean lookForLicense, Set<JarMetadata> embeddedJarNames, int level, InputStream pomInputStream, boolean retrieveSourceJar) throws IOException {
         MavenXpp3Reader reader = new MavenXpp3Reader();
+        final String indent = getIndent(level);
         try {
             final Model model = reader.read(pomInputStream);
             final Parent parent = model.getParent();
@@ -575,8 +585,9 @@ class LegalArtifactAggregator {
                 parentVersion = parent.getVersion();
             }
 
-            if (model.getLicenses() != null) {
+            if (model.getLicenses() != null && model.getLicenses().size() > 0) {
                 for (License license : model.getLicenses()) {
+                    output(indent, "Found license in POM for " + model.getId());
                     String licenseName = license.getName();
                     // let's try to resolve the license by name
                     KnownLicense knownLicense = getKnowLicenseByName(licenseName);
@@ -627,9 +638,14 @@ class LegalArtifactAggregator {
                 }
             } else {
                 if (parent != null) {
-                    Artifact parentArtifact = new DefaultArtifact(parent.getGroupId(), parent.getArtifactId(), null, parent.getVersion());
+                    Artifact parentArtifact = new DefaultArtifact(parent.getGroupId(), parent.getArtifactId(), "pom", parent.getVersion());
                     Artifact resolvedParentArtifact = resolveArtifact(parentArtifact, level);
-                    processPOM(lookForNotice, lookForLicense, embeddedJarNames, level+1, new FileInputStream(resolvedParentArtifact.getFile()), false);
+                    if (resolvedParentArtifact != null) {
+                        output(indent, "Processing parent POM " + parentArtifact + "...");
+                        processPOM(lookForNotice, lookForLicense, embeddedJarNames, level + 1, new FileInputStream(resolvedParentArtifact.getFile()), false);
+                    } else {
+                        output(indent, "Couldn't resolve parent POM " + parentArtifact + " !");
+                    }
                 }
             }
 
