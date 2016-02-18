@@ -71,23 +71,32 @@
  */
 package org.jahia.tools.maven.plugins;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * @author Christophe Laprun
  */
-class LicenseFile {
+class LicenseFile implements Comparable<LicenseFile> {
     private String text;
     private int hash;
-    private List<KnownLicense> knownLicenses;
+    private List<KnownLicense> knownLicenses = new ArrayList<>();
     private String additionalLicenseText;
+    private String projectOrigin;
 
-    LicenseFile(List<String> licenseLines) {
+    LicenseFile(String projectOrigin, List<String> licenseLines) {
+        this.projectOrigin = projectOrigin;
         StringBuilder stringBuilder = new StringBuilder(4096);
         for (String licenseLine : licenseLines) {
             stringBuilder.append(licenseLine).append("\n");
         }
         text = stringBuilder.toString();
+        hash = text.hashCode();
+    }
+
+    public LicenseFile(String projectOrigin, String text) {
+        this.projectOrigin = projectOrigin;
+        this.text = text;
         hash = text.hashCode();
     }
 
@@ -130,5 +139,18 @@ class LicenseFile {
 
     public void setAdditionalLicenseText(String additionalLicenseText) {
         this.additionalLicenseText = additionalLicenseText;
+    }
+
+    public String getProjectOrigin() {
+        return projectOrigin;
+    }
+
+    @Override
+    public int compareTo(LicenseFile o) {
+        int originCompareTo = projectOrigin.compareTo(o.projectOrigin);
+        if (originCompareTo != 0) {
+            return originCompareTo;
+        }
+        return text.compareTo(o.getText());
     }
 }

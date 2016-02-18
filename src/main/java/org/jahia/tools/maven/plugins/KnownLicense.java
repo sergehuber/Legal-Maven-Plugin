@@ -3,6 +3,8 @@ package org.jahia.tools.maven.plugins;
 import javax.xml.bind.annotation.XmlRootElement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Created by loom on 16.02.16.
@@ -13,6 +15,7 @@ public class KnownLicense {
     private String id;
 
     private String name;
+    private Set<String> aliases = new TreeSet<>();
 
     private String version;
     private boolean viral;
@@ -38,6 +41,14 @@ public class KnownLicense {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public Set<String> getAliases() {
+        return aliases;
+    }
+
+    public void setAliases(Set<String> aliases) {
+        this.aliases = aliases;
     }
 
     public String getVersion() {

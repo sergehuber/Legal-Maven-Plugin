@@ -3,12 +3,17 @@
     "asl-v2" : {
       "id" : "asl-v2",
       "name" : "Apache Software License V2",
+      "aliases" : [ "ASL, version 2", "Apache License, Version 2.0", "Apache License 2.0" ],
       "version" : "2.0",
       "viral" : false,
       "textVariants" : [
         {
           "id" : "default",
           "defaultVariant" : true
+        },
+        {
+          "id" : "longer-version",
+          "defaultVariant" : false
         },
         {
           "id" : "short-form",
@@ -23,11 +28,25 @@
           "defaultVariant" : false
         }
       ],
-      "textToUse" : null
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "lgpl-v2.1" : {
+      "id" : "lgpl-v2.1",
+      "name" : "GNU LESSER GENERAL PUBLIC LICENSE V2.1",
+      "aliases" : [ "LGPL, version 2.1" ],
+      "version" : "2.1",
+      "viral" : true,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
     },
     "lgpl-v3" : {
       "id" : "lgpl-v3",
-      "name" : "GNU LESSER GENERAL PUBLIC LICENSE",
+      "name" : "GNU LESSER GENERAL PUBLIC LICENSE V3.0",
       "version" : "3.0",
       "viral" : true,
       "textVariants" : [
@@ -36,7 +55,7 @@
           "defaultVariant" : true
         }
       ],
-      "textToUse" : null
+      "textToUse" : "classpath:LICENSE.txt"
     },
     "cddl-v1" : {
       "id" : "cddl-v1",
@@ -49,7 +68,7 @@
           "defaultVariant" : true
         }
       ],
-      "textToUse" : null
+      "textToUse" : "classpath:LICENSE.txt"
     },
     "gpl-v2" : {
       "id" : "gpl-v2",
@@ -62,7 +81,21 @@
           "defaultVariant" : true
         }
       ],
-      "textToUse" : null
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "bsd" : {
+      "id" : "bsd-3clause",
+      "name" : "BSD Software license",
+      "aliases" : [ "BSD licence", "The BSD License"],
+      "version" : "3-clause",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
     }
   }
 }
