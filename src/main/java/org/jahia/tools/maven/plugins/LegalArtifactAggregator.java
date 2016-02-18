@@ -128,8 +128,8 @@ class LegalArtifactAggregator {
                 allNoticeLines.add(getStartTitle("Notice for " + project));
                 for (Notice notice : notices) {
                     allNoticeLines.add(notice.toString());
-                    allNoticeLines.add(getEndTitle("End of notice for " + project));
                 }
+                allNoticeLines.add(getEndTitle("End of notice for " + project));
             }
         }
 
