@@ -33,6 +33,8 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +42,8 @@ import java.security.cert.X509Certificate;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.JarInputStream;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -68,10 +72,11 @@ class LegalArtifactAggregator {
     private final Map<String,Set<LicenseFile>> projectToLicenseFiles = new TreeMap<>();
     private final List<String> missingLicenses = new LinkedList<>();
 
-
     private final SortedMap<String, Set<Notice>> projectToNotice = new TreeMap<>();
     private final List<String> duplicatedNotices = new LinkedList<>();
     private final List<String> missingNotices = new LinkedList<>();
+
+    private final SortedMap<String,SortedSet<PackageInfo>> jarPackages = new TreeMap<>();
 
     private final boolean verbose;
     private final boolean outputDiagnostics;
@@ -105,10 +110,15 @@ class LegalArtifactAggregator {
     void execute() {
         Collection<File> jarFiles = FileUtils.listFiles(scanDirectory, new String[]{"jar"}, true);
         for (File jarFile : jarFiles) {
+            FileInputStream jarInputStream = null;
             try {
-                processJarFile(jarFile, true, 0, true, true);
+                jarInputStream = new FileInputStream(jarFile);
+                processJarFile(jarInputStream, jarFile.getPath(), true, 0, true, true);
             } catch (IOException e) {
-                output(START_INDENT, "Error handling JAR " + jarFile.getPath() + ". This file will be ignored.", true, true);
+                output(START_INDENT, "Error handling JAR " + jarFile.getPath() + ":" + e.getMessage() + ". This file will be ignored.", true, true);
+                e.printStackTrace();
+            } finally {
+                IOUtils.closeQuietly(jarInputStream);
             }
         }
 
@@ -158,9 +168,10 @@ class LegalArtifactAggregator {
                 for (LicenseFile licenseFile : licenseFiles) {
                     writer.append("  " + licenseFile.getProjectOrigin() + "\n");
                 }
-                writer.append("---------------------------------------------------------------------------------------------------\n");
+                writer.append(getStartTitle(foundKnownLicenseEntry.getKey().getName()));
+                writer.append("\n");
                 writer.append(foundKnownLicenseEntry.getKey().getTextToUse());
-                writer.append(getEndTitle("End of license"));
+                writer.append(getEndTitle("End of " + foundKnownLicenseEntry.getKey().getName()));
                 writer.append("\n\n");
             }
 
@@ -173,6 +184,15 @@ class LegalArtifactAggregator {
         if (updateKnownLicenses) {
             saveKnownLicenses();
         }
+
+        File jarPackagesFile = new File(outputDirectory, "jar-packages.json");
+        try {
+            mapper.enable(SerializationFeature.INDENT_OUTPUT);
+            mapper.writeValue(jarPackagesFile, jarPackages);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
     private void loadKnownLicenses() {
@@ -309,36 +329,48 @@ class LegalArtifactAggregator {
         }
     }
 
-    private void processJarFile(File jarFile, boolean processMavenPom, int level, boolean lookForNotice, boolean lookForLicense) throws IOException {
+    private void processJarFile(InputStream inputStream, String jarFilePath, boolean processMavenPom, int level, boolean lookForNotice, boolean lookForLicense) throws IOException {
         // if we don't need to find either a license or notice, don't process the jar at all
         if (!lookForLicense && !lookForNotice) {
             return;
         }
 
-        JarFile realJarFile = new JarFile(jarFile);
-        Enumeration<JarEntry> jarEntries = realJarFile.entries();
-        String pomFilePath = null;
-
         final String indent = getIndent(level);
+        output(indent, "Processing JAR " + jarFilePath + "...", false, true);
 
-        output(indent, "Processing JAR " + jarFile.getPath() + "...", false, true);
+        // JarFile realJarFile = new JarFile(jarFile);
+        JarInputStream jarInputStream = new JarInputStream(inputStream);
+        String bundleLicense = null;
+        Manifest manifest = jarInputStream.getManifest();
+        if (manifest != null && manifest.getMainAttributes() != null) {
+            bundleLicense = manifest.getMainAttributes().getValue("Bundle-License");
+            if (bundleLicense != null) {
+                output(indent, "Found Bundle-License attribute with value:" + bundleLicense);
+                KnownLicense knownLicense = getKnowLicenseByName(bundleLicense);
+                // this data is not reliable, especially on the ServiceMix repackaged bundles
+            }
+        }
+        String pomFilePath = null;
+        byte[] pomByteArray = null;
+
+
         Notice notice;
         Set<JarMetadata> embeddedJars = new HashSet<>(7);
-        while (jarEntries.hasMoreElements()) {
-            JarEntry curJarEntry = jarEntries.nextElement();
+        JarEntry curJarEntry = null;
+        while ((curJarEntry = jarInputStream.getNextJarEntry()) != null) {
 
             if (!curJarEntry.isDirectory()) {
                 final String fileName = curJarEntry.getName();
-                if (lookForNotice && isNotice(fileName, jarFile)) {
+                if (lookForNotice && isNotice(fileName, jarFilePath)) {
 
                     output(indent, "Processing notice found in " + curJarEntry + "...");
 
-                    InputStream noticeInputStream = realJarFile.getInputStream(curJarEntry);
+                    InputStream noticeInputStream = jarInputStream;
                     List<String> noticeLines = IOUtils.readLines(noticeInputStream);
                     notice = new Notice(noticeLines);
 
                     // compute project name
-                    final String jarFileName = getJarFileName(jarFile.getName());
+                    final String jarFileName = getJarFileName(jarFilePath);
                     final JarMetadata jarMetadata = new JarMetadata(jarFileName);
 
                     final String project = jarMetadata.getProject() != null ? jarMetadata.getProject() : JarMetadata.getDashSeparatedProjectName(jarFileName);
@@ -353,29 +385,33 @@ class LegalArtifactAggregator {
                         notices.add(notice);
                     } else {
                         output(indent, "Duplicated notice in " + curJarEntry);
-                        duplicatedNotices.add(jarFile.getPath());
+                        duplicatedNotices.add(jarFilePath);
                     }
 
                     lookForNotice = false;
 
-                    IOUtils.closeQuietly(noticeInputStream);
+                    // IOUtils.closeQuietly(noticeInputStream);
                 } else if (processMavenPom && fileName.endsWith("pom.xml")) {
                     // remember pom file path in case we need it
                     pomFilePath = curJarEntry.getName();
-                } else if (lookForLicense && isLicense(fileName, jarFile)) {
+                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                    IOUtils.copy(jarInputStream, byteArrayOutputStream);
+                    pomByteArray = byteArrayOutputStream.toByteArray();
+
+                } else if (lookForLicense && isLicense(fileName, jarFilePath)) {
 
                     output(indent, "Processing license found in " + curJarEntry + "...");
-                    InputStream licenseInputStream = realJarFile.getInputStream(curJarEntry);
+                    InputStream licenseInputStream = jarInputStream;
                     List<String> licenseLines = IOUtils.readLines(licenseInputStream);
 
-                    LicenseFile licenseFile = new LicenseFile(jarFile.getPath(), licenseLines);
+                    LicenseFile licenseFile = new LicenseFile(jarFilePath, licenseLines);
 
                     resolveKnownLicensesByText(licenseFile);
 
                     if (StringUtils.isNotBlank(licenseFile.getAdditionalLicenseText())) {
                         KnownLicense knownLicense = new KnownLicense();
-                        knownLicense.setId(jarFile.getName() + "-additional-terms");
-                        knownLicense.setName("Additional license terms from " + jarFile);
+                        knownLicense.setId(jarFilePath + "-additional-terms");
+                        knownLicense.setName("Additional license terms from " + jarFilePath);
                         List<TextVariant> textVariants = new ArrayList<>();
                         TextVariant textVariant = new TextVariant();
                         textVariant.setId("default");
@@ -403,82 +439,128 @@ class LegalArtifactAggregator {
                         }
                     }
 
-                    Set<LicenseFile> licenseFiles = projectToLicenseFiles.get(jarFile.getPath());
+                    Set<LicenseFile> licenseFiles = projectToLicenseFiles.get(jarFilePath);
                     if (licenseFiles == null) {
                         licenseFiles = new HashSet<>();
                     }
                     if (licenseFiles.contains(licenseFile)) {
                         // warning we already have a license file here, what should we do ?
-                        output(indent, "License file already exists for " + jarFile.getPath() + " will override it !", true, false);
+                        output(indent, "License file already exists for " + jarFilePath + " will override it !", true, false);
                         licenseFiles.remove(licenseFile);
                     }
                     licenseFiles.add(licenseFile);
 
                     lookForLicense = false;
 
-                    IOUtils.closeQuietly(licenseInputStream);
+                    // IOUtils.closeQuietly(licenseInputStream);
 
                 } else if (fileName.endsWith(".jar")) {
+                    InputStream embeddedJarInputStream = jarInputStream;
+                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                    IOUtils.copy(embeddedJarInputStream, byteArrayOutputStream);
                     final JarMetadata jarMetadata = new JarMetadata(getJarFileName(fileName));
 
                     if (jarMetadata != null) {
+                        jarMetadata.setJarContents(byteArrayOutputStream.toByteArray());
                         embeddedJars.add(jarMetadata);
                     }
+                } else if (fileName.endsWith(".class")) {
+                    String className = fileName.substring(0, fileName.length() - ".class".length()).replaceAll("/", ".");
+                    int lastPoint = className.lastIndexOf(".");
+                    String packageName = null;
+                    if (lastPoint > 0) {
+                        packageName = className.substring(0, lastPoint);
+                        SortedSet<PackageInfo> currentJarPackages = jarPackages.get(FilenameUtils.getBaseName(jarFilePath));
+                        if (currentJarPackages == null) {
+                            currentJarPackages = new TreeSet<>();
+                        }
+                        PackageInfo packageInfo = new PackageInfo(jarFilePath, packageName);
+                        packageInfo.setLicenseKey("");
+                        packageInfo.setVersion("");
+                        packageInfo.setCopyrightStartYear(0);
+                        packageInfo.setCopyrightEndYear(0);
+                        packageInfo.setCopyrightOwner("");
+                        currentJarPackages.add(packageInfo);
+                        jarPackages.put(FilenameUtils.getBaseName(jarFilePath), currentJarPackages);
+                    }
+                }
+
+            }
+            jarInputStream.closeEntry();
+        }
+
+        jarInputStream.close();
+        jarInputStream = null;
+
+        if (!embeddedJars.isEmpty()) {
+            for (JarMetadata jarMetadata : embeddedJars) {
+                if (jarMetadata.getJarContents() != null) {
+                    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(jarMetadata.getJarContents());
+                    processJarFile(byteArrayInputStream, jarMetadata.toString(), true, level, true, true);
+                } else {
+                    output(indent, "Couldn't find dependency for embedded JAR " + jarMetadata, true, false);
                 }
             }
         }
 
+
         if (processMavenPom) {
             if (pomFilePath == null) {
-                output(indent, "No POM found in " + jarFile.getPath());
+                output(indent, "No POM found in " + jarFilePath);
             } else {
-                output(indent, "Processing POM found at " + pomFilePath + " in " + jarFile.getPath() + "...");
-                processJarPOM(realJarFile, pomFilePath, lookForNotice, lookForLicense, embeddedJars, level + 1);
+                output(indent, "Processing POM found at " + pomFilePath + " in " + jarFilePath + "...");
+                ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(pomByteArray);
+                processJarPOM(byteArrayInputStream, pomFilePath, jarFilePath, lookForNotice, lookForLicense, embeddedJars, level + 1);
             }
         }
 
         if (lookForLicense || lookForNotice) {
             if (lookForLicense) {
-                output(indent, "No license found in " + jarFile.getPath());
+                output(indent, "No license found in " + jarFilePath);
             }
             if (lookForNotice) {
-                output(indent, "No notice found in " + jarFile.getPath());
+                output(indent, "No notice found in " + jarFilePath);
             }
 
             if (pomFilePath == null && lookForLicense && lookForNotice) {
-                final JarMetadata jarMetadata = new JarMetadata(FilenameUtils.getBaseName(jarFile.getName()));
-                List<Artifact> mavenCentralArtifacts = findArtifactInMavenCentral(jarMetadata.getName(), jarMetadata.getVersion(), jarMetadata.getClassifier());
-                if (mavenCentralArtifacts != null && mavenCentralArtifacts.size() == 1) {
-                    Artifact mavenCentralArtifact = mavenCentralArtifacts.get(0);
-                    Artifact resolvedArtifact = resolveArtifact(mavenCentralArtifact, level);
-                    if (resolvedArtifact != null) {
-                        // we have a copy of the local artifact, let's request the sources for it.
-                        if (!"sources".equals(jarMetadata.getClassifier())) {
-                            final Artifact artifact = new DefaultArtifact(resolvedArtifact.getGroupId(), resolvedArtifact.getArtifactId(), "sources", "jar", resolvedArtifact.getVersion());
-                            File sourceJar = getArtifactFile(artifact, level);
-                            if (sourceJar != null && sourceJar.exists()) {
-                                processJarFile(sourceJar, false, level+1, lookForNotice, lookForLicense);
+                final JarMetadata jarMetadata = new JarMetadata(FilenameUtils.getBaseName(jarFilePath));
+                if (StringUtils.isBlank(jarMetadata.getVersion())) {
+                    output(indent, "Couldn't resolve version for JAR " + jarMetadata + ", can't query Maven Central repository without version !");
+                } else {
+                    List<Artifact> mavenCentralArtifacts = findArtifactInMavenCentral(jarMetadata.getName(), jarMetadata.getVersion(), jarMetadata.getClassifier());
+                    if (mavenCentralArtifacts != null && mavenCentralArtifacts.size() == 1) {
+                        Artifact mavenCentralArtifact = mavenCentralArtifacts.get(0);
+                        Artifact resolvedArtifact = resolveArtifact(mavenCentralArtifact, level);
+                        if (resolvedArtifact != null) {
+                            // we have a copy of the local artifact, let's request the sources for it.
+                            if (!"sources".equals(jarMetadata.getClassifier())) {
+                                final Artifact artifact = new DefaultArtifact(resolvedArtifact.getGroupId(), resolvedArtifact.getArtifactId(), "sources", "jar", resolvedArtifact.getVersion());
+                                File sourceJar = getArtifactFile(artifact, level);
+                                if (sourceJar != null && sourceJar.exists()) {
+                                    FileInputStream sourceJarInputStream = new FileInputStream(sourceJar);
+                                    processJarFile(sourceJarInputStream, sourceJar.getPath(), false, level + 1, lookForNotice, lookForLicense);
+                                    IOUtils.closeQuietly(sourceJarInputStream);
+                                }
+                            } else {
+                                // we are already processing a sources artifact, we need to load the pom artifact to extract information from there
+                                final Artifact artifact = new DefaultArtifact(resolvedArtifact.getGroupId(), resolvedArtifact.getArtifactId(), null, "pom", resolvedArtifact.getVersion());
+                                File artifactPom = getArtifactFile(artifact, level);
+                                if (artifactPom != null && artifactPom.exists()) {
+                                    output(indent, "Processing POM for " + artifact + "...");
+                                    processPOM(lookForNotice, lookForLicense, jarFilePath, embeddedJars, level + 1, new FileInputStream(artifactPom), false);
+                                }
                             }
                         } else {
-                            // we are already processing a sources artifact, we need to load the pom artifact to extract information from there
-                            final Artifact artifact = new DefaultArtifact(resolvedArtifact.getGroupId(), resolvedArtifact.getArtifactId(), null, "pom", resolvedArtifact.getVersion());
-                            File artifactPom = getArtifactFile(artifact, level);
-                            if (artifactPom != null && artifactPom.exists()) {
-                                output(indent, "Processing POM for " + artifact + "...");
-                                processPOM(lookForNotice, lookForLicense, embeddedJars, level + 1, new FileInputStream(artifactPom), false);
-                            }
+                            output(indent, "===>  Couldn't resolve artifact " + mavenCentralArtifact + " in Maven Central. Please resolve license and notice files manually!", false, true);
                         }
                     } else {
-                        output(indent, "===>  Couldn't resolve artifact "+mavenCentralArtifact+" in Maven Central. Please resolve license and notice files manually!", false, true);
+                        output(indent, "===>  Couldn't find nor POM, license or notice. Please check manually!", false, true);
                     }
-                } else {
-                    output(indent, "===>  Couldn't find nor POM, license or notice. Please check manually!", false, true);
                 }
             }
         }
 
-        realJarFile.close();
-        output(indent, "Done processing JAR " + jarFile.getPath() + ".", false, true);
+        output(indent, "Done processing JAR " + jarFilePath + ".", false, true);
 
     }
 
@@ -495,7 +577,11 @@ class LegalArtifactAggregator {
         final int lastSlash = fileName.lastIndexOf('/');
         fileName = lastSlash > 0 ? fileName.substring(lastSlash + 1) : fileName;
         final int endVersion = fileName.lastIndexOf('.');
-        return fileName.substring(0, endVersion);
+        if (endVersion > 0) {
+            return fileName.substring(0, endVersion);
+        } else {
+            return fileName;
+        }
     }
 
     private void output(String indent, String message) {
@@ -509,7 +595,7 @@ class LegalArtifactAggregator {
         }
     }
 
-    private boolean isNotice(String fileName, File jarFile) {
+    private boolean isNotice(String fileName, String jarFilePath) {
         boolean isNotice = fileName.endsWith("NOTICE");
 
         if (!isNotice) {
@@ -523,7 +609,7 @@ class LegalArtifactAggregator {
 
                 if (verbose) {
                     if (!isNotice && lowerCase.contains("notice")) {
-                        System.out.println("Potential notice file " + fileName + " in JAR " + jarFile.getName()
+                        System.out.println("Potential notice file " + fileName + " in JAR " + jarFilePath
                                 + " was NOT handled. You might want to check manually.");
                     }
                 }
@@ -534,7 +620,7 @@ class LegalArtifactAggregator {
         return isNotice;
     }
 
-    private boolean isLicense(String fileName, File jarFile) {
+    private boolean isLicense(String fileName, String jarFilePath) {
         boolean isLicense = fileName.endsWith("LICENSE");
 
         if (!isLicense) {
@@ -548,7 +634,7 @@ class LegalArtifactAggregator {
 
                 if (verbose) {
                     if (!isLicense && lowerCase.contains("license")) {
-                        System.out.println("Potential license file " + fileName + " in JAR " + jarFile.getName()
+                        System.out.println("Potential license file " + fileName + " in JAR " + jarFilePath
                                 + " was NOT handled. You might want to check manually.");
                     }
                 }
@@ -558,21 +644,18 @@ class LegalArtifactAggregator {
         return isLicense;
     }
 
-    private void processJarPOM(JarFile realJarFile, String pomFilePath, boolean lookForNotice, boolean lookForLicense, Set<JarMetadata> embeddedJarNames, int level) throws
+    private void processJarPOM(InputStream pomInputStream, String pomFilePath, String jarFilePath, boolean lookForNotice, boolean lookForLicense, Set<JarMetadata> embeddedJarNames, int level) throws
             IOException {
         // if we're not looking for notice or license and don't have embedded jars, don't process at all
         if (embeddedJarNames.isEmpty() && !lookForNotice && !lookForLicense) {
             return;
         }
 
-        JarEntry pomJarEntry = new JarEntry(pomFilePath);
-        InputStream pomInputStream = realJarFile.getInputStream(pomJarEntry);
-
-        processPOM(lookForNotice, lookForLicense, embeddedJarNames, level, pomInputStream, true);
+        processPOM(lookForNotice, lookForLicense, jarFilePath, embeddedJarNames, level, pomInputStream, true);
 
     }
 
-    private void processPOM(boolean lookForNotice, boolean lookForLicense, Set<JarMetadata> embeddedJarNames, int level, InputStream pomInputStream, boolean retrieveSourceJar) throws IOException {
+    private void processPOM(boolean lookForNotice, boolean lookForLicense, String jarFilePath, Set<JarMetadata> embeddedJarNames, int level, InputStream pomInputStream, boolean retrieveSourceJar) throws IOException {
         MavenXpp3Reader reader = new MavenXpp3Reader();
         final String indent = getIndent(level);
         try {
@@ -596,12 +679,12 @@ class LegalArtifactAggregator {
                         if (licenseFiles == null) {
                             licenseFiles = new TreeSet<>();
                         }
-                        LicenseFile licenseFile = new LicenseFile(model.getId(), knownLicense.getTextToUse());
+                        LicenseFile licenseFile = new LicenseFile(jarFilePath, knownLicense.getTextToUse());
                         licenseFile.getKnownLicenses().add(knownLicense);
                         licenseFiles.add(licenseFile);
                         knownLicensesFound.put(knownLicense, licenseFiles);
                         // found a license for this project, let's see if we can resolve it
-                        Set<LicenseFile> projectLicenseFiles = projectToLicenseFiles.get(model.getId());
+                        Set<LicenseFile> projectLicenseFiles = projectToLicenseFiles.get(jarFilePath);
                         if (projectLicenseFiles == null) {
                             projectLicenseFiles = new HashSet<>();
                         }
@@ -609,28 +692,32 @@ class LegalArtifactAggregator {
                             LicenseFile firstLicenseFile = licenseFiles.iterator().next();
                             firstLicenseFile.getKnownLicenses().add(knownLicense);
                         }
-                        projectToLicenseFiles.put(model.getId(), projectLicenseFiles);
+                        projectToLicenseFiles.put(jarFilePath, projectLicenseFiles);
                     } else if (license.getUrl() != null) {
-                        URL licenseURL = new URL(license.getUrl());
-                        String licenseText = IOUtils.toString(licenseURL);
-                        if (StringUtils.isNotBlank(licenseText)) {
-                            // found a license for this project, let's see if we can resolve it
-                            Set<LicenseFile> licenseFiles = projectToLicenseFiles.get(model.getId());
-                            if (licenseFiles == null) {
-                                licenseFiles = new HashSet<>();
-                            }
-                            LicenseFile newLicenseFile = new LicenseFile(model.getId(), licenseText);
-                            if (licenseFiles.contains(newLicenseFile)) {
-                                for (LicenseFile licenseFile : licenseFiles) {
-                                    if (licenseFile.equals(newLicenseFile)) {
-                                        newLicenseFile = licenseFile;
-                                        break;
+                        try {
+                            URL licenseURL = new URL(license.getUrl());
+                            String licenseText = IOUtils.toString(licenseURL);
+                            if (StringUtils.isNotBlank(licenseText)) {
+                                // found a license for this project, let's see if we can resolve it
+                                Set<LicenseFile> licenseFiles = projectToLicenseFiles.get(jarFilePath);
+                                if (licenseFiles == null) {
+                                    licenseFiles = new HashSet<>();
+                                }
+                                LicenseFile newLicenseFile = new LicenseFile(jarFilePath, licenseText);
+                                if (licenseFiles.contains(newLicenseFile)) {
+                                    for (LicenseFile licenseFile : licenseFiles) {
+                                        if (licenseFile.equals(newLicenseFile)) {
+                                            newLicenseFile = licenseFile;
+                                            break;
+                                        }
                                     }
                                 }
+                                resolveKnownLicensesByText(newLicenseFile);
+                                licenseFiles.add(newLicenseFile);
+                                projectToLicenseFiles.put(jarFilePath, licenseFiles);
                             }
-                            resolveKnownLicensesByText(newLicenseFile);
-                            licenseFiles.add(newLicenseFile);
-                            projectToLicenseFiles.put(model.getId(), licenseFiles);
+                        } catch (MalformedURLException mue) {
+                            output(indent, "Invalid license URL : " + license.getUrl() + ": " + mue.getMessage());
                         }
                     } else {
                         // couldn't resolve the license
@@ -642,7 +729,7 @@ class LegalArtifactAggregator {
                     Artifact resolvedParentArtifact = resolveArtifact(parentArtifact, level);
                     if (resolvedParentArtifact != null) {
                         output(indent, "Processing parent POM " + parentArtifact + "...");
-                        processPOM(lookForNotice, lookForLicense, embeddedJarNames, level + 1, new FileInputStream(resolvedParentArtifact.getFile()), false);
+                        processPOM(lookForNotice, lookForLicense, jarFilePath, embeddedJarNames, level + 1, new FileInputStream(resolvedParentArtifact.getFile()), false);
                     } else {
                         output(indent, "Couldn't resolve parent POM " + parentArtifact + " !");
                     }
@@ -692,9 +779,13 @@ class LegalArtifactAggregator {
                 for (JarMetadata jarName : embeddedJarNames) {
                     final Dependency dependency = artifactToDep.get(jarName.name);
                     if (dependency != null) {
-                        File jar = getArtifactFile(new DefaultArtifact(dependency.getGroupId(), dependency.getArtifactId(), null, "jar", jarName.version), level);
-                        if (jar != null && jar.exists()) {
-                            processJarFile(jar, true, level, true, true);
+                        File jarFile = getArtifactFile(new DefaultArtifact(dependency.getGroupId(), dependency.getArtifactId(), null, "jar", jarName.version), level);
+                        if (jarFile != null && jarFile.exists()) {
+                            FileInputStream jarInputStream = new FileInputStream(jarFile);
+                            processJarFile(jarInputStream, jarFile.getPath(), true, level, true, true);
+                            IOUtils.closeQuietly(jarInputStream);
+                        } else {
+                            output(indent, "Couldn't find dependency for embedded JAR " + jarName, true, false);
                         }
                     }
                 }
@@ -707,7 +798,9 @@ class LegalArtifactAggregator {
 
                 File sourceJar = getArtifactFile(artifact, level);
                 if (sourceJar != null && sourceJar.exists()) {
-                    processJarFile(sourceJar, false, level, lookForNotice, lookForLicense);
+                    FileInputStream sourceJarInputStream = new FileInputStream(sourceJar);
+                    processJarFile(sourceJarInputStream, sourceJar.getPath(), false, level, lookForNotice, lookForLicense);
+                    IOUtils.closeQuietly(sourceJarInputStream);
                 }
             }
         } catch (XmlPullParserException e) {
@@ -916,26 +1009,28 @@ class LegalArtifactAggregator {
     public void resolveKnownLicensesByText(LicenseFile licenseFile) {
         List<KnownLicense> foundLicenses = new ArrayList<>();
         String licenseText = licenseFile.getText();
-        boolean licenseFound = false;
         if (knownLicenses.getLicenses() == null) {
             return;
         }
-        do {
-            licenseFound = false;
-            for (KnownLicense knownLicense : knownLicenses.getLicenses().values()) {
-                for (TextVariant textVariant : knownLicense.getTextVariants()) {
-                    Matcher textVariantMatcher = textVariant.getCompiledTextPattern().matcher(licenseText);
-                    if (textVariantMatcher.find()) {
-                        foundLicenses.add(knownLicense);
-                        licenseText = licenseText.substring(textVariantMatcher.end());
-                        licenseFound = true;
-                    }
-                }
-                if (licenseFound) {
-                    break;
-                }
+        SortedMap<TextVariant,KnownLicense> textVariantsBySize = new TreeMap<>(new Comparator<TextVariant>() {
+            @Override
+            public int compare(TextVariant o1, TextVariant o2) {
+                return o2.getText().length() - o1.getText().length();
             }
-        } while (licenseFound);
+        });
+        for (KnownLicense knownLicense : knownLicenses.getLicenses().values()) {
+            for (TextVariant textVariant : knownLicense.getTextVariants()) {
+                textVariantsBySize.put(textVariant, knownLicense);
+            }
+        }
+        for (SortedMap.Entry<TextVariant,KnownLicense> textVariantBySizeEntry : textVariantsBySize.entrySet()) {
+            Matcher textVariantMatcher = textVariantBySizeEntry.getKey().getCompiledTextPattern().matcher(licenseText);
+            if (textVariantMatcher.find()) {
+                foundLicenses.add(textVariantBySizeEntry.getValue());
+                licenseText = licenseText.substring(textVariantMatcher.end());
+                break;
+            }
+        }
         if (foundLicenses.size() == 0) {
             System.out.println("No known license found for license file " + licenseFile);
         }

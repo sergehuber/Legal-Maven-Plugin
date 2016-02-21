@@ -8,12 +8,13 @@ public class JarMetadata {
     String version;
     String project;
     String classifier = null;
+    byte[] jarContents = null;
 
     public JarMetadata(String name, String version, String classifier) {
         this.name = name;
         this.version = version;
         this.classifier = classifier;
-        this.project = getProject(name);;
+        this.project = getProject(name);
     }
 
     public JarMetadata(String mavenArtifactFileName) {
@@ -130,5 +131,11 @@ public class JarMetadata {
         return classifier;
     }
 
+    public byte[] getJarContents() {
+        return jarContents;
+    }
 
+    public void setJarContents(byte[] jarContents) {
+        this.jarContents = jarContents;
+    }
 }
