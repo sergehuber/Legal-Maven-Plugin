@@ -1,23 +1,38 @@
 package org.jahia.tools.maven.plugins;
 
+import javax.xml.bind.annotation.XmlTransient;
+import java.util.*;
+
 /**
  * Created by loom on 16.02.16.
  */
-public class JarMetadata {
+public class JarMetadata implements Comparable<JarMetadata> {
+    String fullPath;
     String name;
     String version;
     String project;
     String classifier = null;
     byte[] jarContents = null;
+    String inceptionYear = null;
+    String projectUrl = null;
+    String organizationName = null;
+    String organizationUrl = null;
 
-    public JarMetadata(String name, String version, String classifier) {
+    SortedSet<JarMetadata> embeddedJars = new TreeSet<JarMetadata>();
+    SortedSet<String> packages = new TreeSet<String>();
+    Map<String,LicenseFile> licenseFiles = new TreeMap<>();
+    Map<String,Notice> noticeFiles = new TreeMap<>();
+
+    public JarMetadata(String fullPath, String name, String version, String classifier) {
+        this.fullPath = fullPath;
         this.name = name;
         this.version = version;
         this.classifier = classifier;
         this.project = getProject(name);
     }
 
-    public JarMetadata(String mavenArtifactFileName) {
+    public JarMetadata(String fullPath, String mavenArtifactFileName) {
+        this.fullPath = fullPath;
         // look for beginning of version string if any
         int versionStartsAt = -1;
         int dash = mavenArtifactFileName.indexOf('-');
@@ -63,8 +78,10 @@ public class JarMetadata {
             int host = name.indexOf('.', dot + 1);
             if (host > dot) {
                 int proj = name.indexOf('.', host + 1);
-                project = name.substring(0, proj);
-                standard = true;
+                if (proj >= 0) {
+                    project = name.substring(0, proj);
+                    standard = true;
+                }
             }
 
             if (!standard) {
@@ -108,7 +125,11 @@ public class JarMetadata {
     @Override
     public String toString() {
         StringBuilder result = new StringBuilder();
-        result.append(name).append("-").append(version);
+        result.append(name);
+        if (version != null) {
+            result.append("-");
+            result.append(version);
+        }
         if (classifier != null) {
             result.append("-").append(classifier);
         }
@@ -131,11 +152,89 @@ public class JarMetadata {
         return classifier;
     }
 
+    @XmlTransient
     public byte[] getJarContents() {
         return jarContents;
     }
 
     public void setJarContents(byte[] jarContents) {
         this.jarContents = jarContents;
+    }
+
+    public Map<String, LicenseFile> getLicenseFiles() {
+        return licenseFiles;
+    }
+
+    public void setLicenseFiles(Map<String, LicenseFile> licenseFiles) {
+        this.licenseFiles = licenseFiles;
+    }
+
+    public Map<String, Notice> getNoticeFiles() {
+        return noticeFiles;
+    }
+
+    public void setNoticeFiles(Map<String, Notice> noticeFiles) {
+        this.noticeFiles = noticeFiles;
+    }
+
+    public SortedSet<JarMetadata> getEmbeddedJars() {
+        return embeddedJars;
+    }
+
+    public void setEmbeddedJars(SortedSet<JarMetadata> embeddedJars) {
+        this.embeddedJars = embeddedJars;
+    }
+
+    public String getFullPath() {
+        return fullPath;
+    }
+
+    public void setFullPath(String fullPath) {
+        this.fullPath = fullPath;
+    }
+
+    public SortedSet<String> getPackages() {
+        return packages;
+    }
+
+    public void setPackages(SortedSet<String> packages) {
+        this.packages = packages;
+    }
+
+    public String getInceptionYear() {
+        return inceptionYear;
+    }
+
+    public void setInceptionYear(String inceptionYear) {
+        this.inceptionYear = inceptionYear;
+    }
+
+    public String getProjectUrl() {
+        return projectUrl;
+    }
+
+    public void setProjectUrl(String projectUrl) {
+        this.projectUrl = projectUrl;
+    }
+
+    public String getOrganizationName() {
+        return organizationName;
+    }
+
+    public void setOrganizationName(String organizationName) {
+        this.organizationName = organizationName;
+    }
+
+    public String getOrganizationUrl() {
+        return organizationUrl;
+    }
+
+    public void setOrganizationUrl(String organizationUrl) {
+        this.organizationUrl = organizationUrl;
+    }
+
+    @Override
+    public int compareTo(JarMetadata o) {
+        return toString().compareTo(o.toString());
     }
 }

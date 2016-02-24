@@ -76,9 +76,12 @@ import java.util.List;
 /**
  * @author Christophe Laprun
  */
-class Notice {
-    private final String notice;
-    private final int hash;
+public class Notice {
+    private String notice;
+    private int hash;
+
+    public Notice() {
+    }
 
     Notice(List<String> noticeLines) {
         StringBuilder stringBuilder = new StringBuilder(1024);
@@ -130,6 +133,22 @@ class Notice {
     @Override
     public String toString() {
         return notice;
+    }
+
+    public String getNotice() {
+        return notice;
+    }
+
+    public void setNotice(String notice) {
+        this.notice = notice;
+    }
+
+    public int getHash() {
+        return hash;
+    }
+
+    public void setHash(int hash) {
+        this.hash = hash;
     }
 
     private static class AcceptStatus {

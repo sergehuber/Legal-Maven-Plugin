@@ -6,10 +6,15 @@
       "aliases" : [
         "ALv2",
         "ASL, version 2",
+        "Apache 2",
+        "Apache 2.0 License",
+        "Apache License",
         "Apache License 2.0",
         "Apache License Version 2.0",
         "Apache License, Version 2.0",
+        "Apache Public License 2.0",
         "Apache Software Licenses",
+        "Apache Software License 2.0",
         "Apache Software License - Version 2.0",
         "The Apache Software License, Version 2.0"
       ],
@@ -33,7 +38,15 @@
           "defaultVariant" : false
         },
         {
+          "id" : "java-commented-long-form",
+          "defaultVariant" : false
+        },
+        {
           "id" : "short-form-with-copy-information",
+          "defaultVariant" : false
+        },
+        {
+          "id" : "html",
           "defaultVariant" : false
         }
       ],
@@ -56,6 +69,9 @@
     "lgpl-v3" : {
       "id" : "lgpl-v3",
       "name" : "GNU LESSER GENERAL PUBLIC LICENSE V3.0",
+      "aliases" : [
+        "GNU Lesser General Public License"
+      ],
       "version" : "3.0",
       "viral" : true,
       "textVariants" : [
@@ -80,6 +96,20 @@
       ],
       "textToUse" : "classpath:LICENSE.txt"
     },
+    "cddl-v1.1" : {
+      "id" : "cddl-v1.1",
+      "name" : "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.1",
+      "aliases" : [ "CDDL 1.1" ],
+      "version" : "1.0",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
     "gpl-v2" : {
       "id" : "gpl-v2",
       "name" : "The GNU General Public License (GPL) Version 2",
@@ -93,9 +123,22 @@
       ],
       "textToUse" : "classpath:LICENSE.txt"
     },
+    "bsd-2clause" : {
+      "id" : "bsd-2clause",
+      "name" : "BSD 2-clause \"Simplified\" License",
+      "version" : "2-clause",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
     "bsd-3clause" : {
       "id" : "bsd-3clause",
-      "name" : "BSD Software license",
+      "name" : "BSD 3-clause \"New\" or \"Revised\" License",
       "aliases" : [ "BSD licence", "The BSD License", "BSD" ],
       "version" : "3-clause",
       "viral" : false,
@@ -103,6 +146,14 @@
         {
           "id" : "default",
           "defaultVariant" : true
+        },
+        {
+          "id" : "asm",
+          "defaultVariant" : false
+        },
+        {
+          "id" : "asm-comments",
+          "defaultVariant" : false
         }
       ],
       "textToUse" : "classpath:LICENSE.txt"
@@ -117,6 +168,10 @@
         {
           "id" : "default",
           "defaultVariant" : true
+        },
+        {
+          "id" : "formatting-2",
+          "defaultVariant" : false
         }
       ],
       "textToUse" : "classpath:LICENSE.txt"
@@ -137,14 +192,52 @@
       ],
       "textToUse" : "classpath:LICENSE.txt"
     },
-    "CDDL-GPLv2" : {
-      "id" : "CDDL-GPLv2",
-      "name" : "CDDL + GPLv2",
+    "CDDLv1-GPLv2" : {
+      "id" : "CDDLv1-GPLv2",
+      "name" : "CDDLv1.0 + GPLv2",
       "aliases" : [
-        "GPLv2+CE",
+        "GPLv2+CE"
+      ],
+      "version" : "1.0",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        },
+        {
+          "id" : "html",
+          "defaultVariant" : false
+        },
+        {
+          "id" : "justified",
+          "defaultVariant" : false
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "CDDLv1.1-GPLv2" : {
+      "id" : "CDDLv1.1-GPLv2",
+      "name" : "CDDLv1.1 + GPLv2",
+      "aliases" : [
+        "GPL2 w/ CPE",
         "Dual license consisting of the CDDL v1.1 and GPL v2"
       ],
       "version" : "1.0",
+      "viral" : false,
+      "textVariants" : [
+        {
+          "id" : "default",
+          "defaultVariant" : true
+        }
+      ],
+      "textToUse" : "classpath:LICENSE.txt"
+    },
+    "cc-by-3.0" : {
+      "id" : "cc-by-3.0",
+      "name" : "Creative Commons Attribution 3.0",
+      "aliases" : [],
+      "version" : "3.0",
       "viral" : false,
       "textVariants" : [
         {

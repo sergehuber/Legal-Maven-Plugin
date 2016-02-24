@@ -34,6 +34,41 @@ in the configuration.
 
 To run the plugin directly, just launch `mvn legal:aggregate-legal-artifacts`
 
+# Generated reports/databases
+
+The plugin will also generate multiple reports in the target directory.
+
+## JAR database
+
+The JAR database report will generate a JSON database that contains all the collected metadata for all the JARs 
+(including embedded JARs) found in the directory tree that was scanned. This database is generated in the 
+
+    target/jar-database.json
+    
+file and might be quite large.
+
+## Package lists
+
+A list of packages encountered in all the JARs that were scanned. The reports are generated in two files that uses
+different file formats : 
+
+    target/package-licenses.json
+    target/flat-package-list.csv
+    
+The data contained in these files is essentially the same. The JSON format is destined to be able to use the data
+programmatically while the CSV format is destined to use the data in a spreadsheet such as Microsoft Excel, Apple Numbers
+or Google Spreadsheet.
+
+## Known licenses
+
+The known licenses report is an update of the embedded know-licenses.json database that lists all the known licenses, but
+the generated report suggests new entries to facilitate updating the database. You should review the result of this 
+report to decide whether you want to add these licenses to the default database. You can find the known licenses JSON
+database in the following files and directories :
+
+    target/known-licenses.json
+    target/known-licenses/
+
 # Debugging the integration test
 
 Launch with :

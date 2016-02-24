@@ -71,20 +71,28 @@
  */
 package org.jahia.tools.maven.plugins;
 
-import java.util.ArrayList;
-import java.util.List;
+import javax.xml.bind.annotation.XmlTransient;
+import java.util.*;
 
 /**
  * @author Christophe Laprun
  */
-class LicenseFile implements Comparable<LicenseFile> {
+public class LicenseFile implements Comparable<LicenseFile> {
+    private String fullPath;
+    private String fileName;
     private String text;
     private int hash;
+    private Set<String> knownLicenseKeys = new TreeSet<>();
     private List<KnownLicense> knownLicenses = new ArrayList<>();
     private String additionalLicenseText;
     private String projectOrigin;
 
-    LicenseFile(String projectOrigin, List<String> licenseLines) {
+    public LicenseFile() {
+    }
+
+    LicenseFile(String fullPath, String fileName, String projectOrigin, List<String> licenseLines) {
+        this.fullPath = fullPath;
+        this.fileName = fileName;
         this.projectOrigin = projectOrigin;
         StringBuilder stringBuilder = new StringBuilder(4096);
         for (String licenseLine : licenseLines) {
@@ -94,7 +102,9 @@ class LicenseFile implements Comparable<LicenseFile> {
         hash = text.hashCode();
     }
 
-    public LicenseFile(String projectOrigin, String text) {
+    public LicenseFile(String fullPath, String fileName, String projectOrigin, String text) {
+        this.fullPath = fullPath;
+        this.fileName = fileName;
         this.projectOrigin = projectOrigin;
         this.text = text;
         hash = text.hashCode();
@@ -121,10 +131,27 @@ class LicenseFile implements Comparable<LicenseFile> {
         return text;
     }
 
+    public String getFullPath() {
+        return fullPath;
+    }
+
+    public void setFullPath(String fullPath) {
+        this.fullPath = fullPath;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
     public String getText() {
         return text;
     }
 
+    @XmlTransient
     public List<KnownLicense> getKnownLicenses() {
         return knownLicenses;
     }
@@ -143,6 +170,30 @@ class LicenseFile implements Comparable<LicenseFile> {
 
     public String getProjectOrigin() {
         return projectOrigin;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public void setHash(int hash) {
+        this.hash = hash;
+    }
+
+    public void setProjectOrigin(String projectOrigin) {
+        this.projectOrigin = projectOrigin;
+    }
+
+    public int getHash() {
+        return hash;
+    }
+
+    public Set<String> getKnownLicenseKeys() {
+        return knownLicenseKeys;
+    }
+
+    public void setKnownLicenseKeys(Set<String> knownLicenseKeys) {
+        this.knownLicenseKeys = knownLicenseKeys;
     }
 
     @Override
